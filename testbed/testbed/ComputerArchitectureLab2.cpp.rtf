@@ -1,0 +1,779 @@
+{\rtf1\ansi\deff0\deftab480
+
+{\fonttbl
+{\f000 Courier New;}
+{\f001 Courier New;}
+{\f002 Courier New;}
+{\f003 Courier New;}
+{\f004 Courier New;}
+{\f005 Courier New;}
+{\f006 Courier New;}
+{\f007 Courier New;}
+{\f008 Courier New;}
+{\f009 Courier New;}
+{\f010 Courier New;}
+}
+
+{\colortbl
+\red000\green000\blue000;
+\red255\green255\blue255;
+\red000\green128\blue000;
+\red255\green255\blue255;
+\red000\green128\blue000;
+\red255\green255\blue255;
+\red255\green128\blue000;
+\red255\green255\blue255;
+\red000\green000\blue255;
+\red255\green255\blue255;
+\red128\green128\blue128;
+\red255\green255\blue255;
+\red128\green064\blue000;
+\red255\green255\blue255;
+\red000\green000\blue128;
+\red255\green255\blue255;
+\red000\green000\blue000;
+\red255\green255\blue255;
+\red128\green000\blue255;
+\red255\green255\blue255;
+\red000\green000\blue000;
+\red255\green255\blue255;
+}
+
+\f5242972\fs20\cb21\cf20 \highlight5\cf4 //\par
+// sharing.cpp\par
+//\par
+// Copyright (C) 2013 - 2014 jones@scss.tcd.ie\par
+//\par
+// This program is free software; you can redistribute it and/or modify it under\par
+// the terms of the GNU General Public License as published by the Free Software Foundation;\par
+// either version 2 of the License, or (at your option) any later version.\par
+//\par
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;\par
+// without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\par
+// See the GNU General Public License for more details.\par
+//\par
+// You should have received a copy of the GNU General Public License\par
+// along with this program; if not, write to the Free Software Foundation Inc.,\par
+// 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.\par
+//\par
+// 19/11/12 first version\par
+// 19/11/12 works with Win32 and x64\par
+// 21/11/12 works with Character Set: Not Set, Unicode Character Set or Multi-Byte Character\par
+// 21/11/12 output results so they can be easily pasted into a spreadsheet from console\par
+// 24/12/12 increment using (0) non atomic increment (1) InterlockedIncrement64 (2) InterlockedCompareExchange\par
+// 12/07/13 increment using (3) RTM (restricted transactional memory)\par
+// 18/07/13 added performance counters\par
+// 27/08/13 choice of 32 or 64 bit counters (32 bit can oveflow if run time longer than a couple of seconds)\par
+// 28/08/13 extended struct Result\par
+// 16/09/13 linux support (needs g++ 4.8 or later)\par
+// 21/09/13 added getWallClockMS()\par
+// 12/10/13 Visual Studio 2013 RC\par
+// 12/10/13 added FALSESHARING\par
+// 14/10/14 added USEPMS\par
+//\par
+\highlight1\cf0 \par
+\highlight5\cf4 //\par
+// NB: hints for pasting from console window\par
+// NB: Edit -> Select All followed by Edit -> Copy\par
+// NB: paste into Excel using paste "Use Text Import Wizard" option and select "/" as the delimiter\par
+//\par
+\highlight1\cf0 \par
+\highlight13\cf12 #include "stdafx.h"                             \highlight5\cf4 // pre-compiled headers\par
+\highlight13\cf12 #include <iostream>                             \highlight5\cf4 // cout\par
+\highlight13\cf12 #include <iomanip>                              \highlight5\cf4 // setprecision\par
+\highlight13\cf12 #include "helper.h"                             \highlight5\cf4 //\par
+\highlight13\cf12 #include <vector>\par
+#include "locks.h"\par
+\highlight1\cf0 \par
+\highlight9\cf8\b using\highlight1\cf0\b0  \highlight9\cf8\b namespace\highlight1\cf0\b0  \highlight17\cf16 std\highlight15\cf14\b ;\highlight1\cf0\b0                             \highlight5\cf4 // cout\par
+\highlight1\cf0 \par
+\par
+\highlight13\cf12 #define K           1024                        \highlight5\cf4 //\par
+\highlight13\cf12 #define GB          (K*K*K)                     \highlight5\cf4 //\par
+\highlight13\cf12 #define NOPS        10000                       \highlight5\cf4 //\par
+\highlight13\cf12 #define NSECONDS    2                           \highlight5\cf4 // run each test for NSECONDS\par
+\highlight1\cf0 \par
+\highlight13\cf12 #define COUNTER64                               \highlight5\cf4 // comment for 32 bit counter\par
+//#define FALSESHARING                          // allocate counters in same cache line\par
+//#define USEPMS                                // use PMS counters\par
+\highlight1\cf0 \par
+\highlight13\cf12 #ifdef COUNTER64\par
+#define VINT    UINT64                          \highlight5\cf4 //  64 bit counter\par
+\highlight13\cf12 #else\par
+#define VINT    UINT                            \highlight5\cf4 //  32 bit counter\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+\highlight13\cf12 #define ALIGNED_MALLOC(sz, align) _aligned_malloc(sz, align)\par
+\highlight1\cf0 \par
+\highlight13\cf12 #ifdef FALSESHARING\par
+#define GINDX(n)    (g+n)                       \highlight5\cf4 //\par
+\highlight13\cf12 #else\par
+#define GINDX(n)    (g+n*lineSz/sizeof(VINT))   \highlight5\cf4 //\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+\highlight5\cf4 //\par
+// OPTYP\par
+//\par
+// 0:inc\par
+// 1:InterlockedIncrement\par
+// 2:InterlockedCompareExchange\par
+// 3:RTM (restricted transactional memory)\par
+//\par
+\highlight1\cf0 \par
+\highlight13\cf12 #define OPTYP       0                           \highlight5\cf4 // set op type\par
+\highlight1\cf0 \par
+\highlight13\cf12 #if OPTYP == 0\par
+\highlight1\cf0 \par
+\highlight13\cf12 #define OPSTR       "inc"\par
+#define INC(g)      (*g)++;\par
+\highlight1\cf0 \par
+\highlight13\cf12 #elif OPTYP == 1\par
+\highlight1\cf0 \par
+\highlight13\cf12 #ifdef COUNTER64\par
+#define OPSTR       "InterlockedIncrement64"\par
+#define INC(g)      InterlockedIncrement64((volatile LONG64*) g)\par
+#else\par
+#define OPSTR       "InterlockedIncrement"\par
+#define INC(g)      InterlockedIncrement(g)\par
+#endif\par
+\highlight1\cf0 \par
+\highlight13\cf12 #elif OPTYP == 2\par
+\highlight1\cf0 \par
+\highlight13\cf12 #ifdef COUNTER64\par
+#define OPSTR       "InterlockedCompareExchange64"\par
+#define INC(g)      do \{                                                                        \\\par
+                        x = *g;                                                                 \\\par
+                    \} while (InterlockedCompareExchange64((volatile LONG64*) g, x+1, x) != x);\par
+#else\par
+#define OPSTR       "InterlockedCompareExchange"\par
+#define INC(g)      do \{                                                                        \\\par
+                        x = *g;                                                                 \\\par
+                    \} while (InterlockedCompareExchange(g, x+1, x) != x);\par
+#endif\par
+\highlight1\cf0 \par
+\highlight13\cf12 #elif OPTYP == 3\par
+\highlight1\cf0 \par
+\highlight13\cf12 #define OPSTR       "RTM (restricted transactional memory)"\par
+#define INC(g)      \{                                                                           \\\par
+                        UINT status = _xbegin();                                                \\\par
+                        if (status == _XBEGIN_STARTED) \{                                        \\\par
+                            (*g)++;                                                             \\\par
+                            _xend();                                                            \\\par
+                        \} else \{                                                                \\\par
+                            nabort++;                                                           \\\par
+                            InterlockedIncrement64((volatile LONG64*)g);                        \\\par
+                        \}                                                                       \\\par
+                    \}\par
+#endif\par
+\highlight1\cf0 \par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 tstart\highlight15\cf14\b ;\highlight1\cf0\b0                                   \highlight5\cf4 // start of test in ms\par
+\highlight19\cf18 int\highlight1\cf0  \highlight17\cf16 sharing\highlight15\cf14\b ;\highlight1\cf0\b0                                     \highlight5\cf4 // % sharing\par
+\highlight19\cf18 int\highlight1\cf0  \highlight17\cf16 lineSz\highlight15\cf14\b ;\highlight1\cf0\b0                                      \highlight5\cf4 // cache line size\par
+\highlight19\cf18 int\highlight1\cf0  \highlight17\cf16 maxThread\highlight15\cf14\b ;\highlight1\cf0\b0                                   \highlight5\cf4 // max # of threads\par
+\highlight17\cf16 string\highlight1\cf0  \highlight17\cf16 lock_type\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\par
+\highlight17\cf16 THREADH\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 threadH\highlight15\cf14\b ;\highlight1\cf0\b0                                \highlight5\cf4 // thread handles\par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 ops\highlight15\cf14\b ;\highlight1\cf0\b0                                     \highlight5\cf4 // for ops per thread\par
+\highlight1\cf0 \par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 aborts\highlight15\cf14\b ;\highlight1\cf0\b0                                  \highlight5\cf4 // for counting aborts\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+\highlight9\cf8\b typedef\highlight1\cf0\b0  \highlight19\cf18 struct\highlight1\cf0  \highlight15\cf14\b \{\highlight1\cf0\b0                               \par
+\tab \highlight17\cf16 string\highlight1\cf0  \highlight17\cf16 lock_type\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \highlight19\cf18 int\highlight1\cf0  \highlight17\cf16 sharing\highlight15\cf14\b ;\highlight1\cf0\b0                                 \highlight5\cf4 // sharing (irrelevent)\par
+\highlight1\cf0     \highlight19\cf18 int\highlight1\cf0  \highlight17\cf16 nt\highlight15\cf14\b ;\highlight1\cf0\b0                                      \highlight5\cf4 // # threads\par
+\highlight1\cf0     \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 rt\highlight15\cf14\b ;\highlight1\cf0\b0                                   \highlight5\cf4 // run time (ms)\par
+\highlight1\cf0     \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 ops\highlight15\cf14\b ;\highlight1\cf0\b0                                  \highlight5\cf4 // ops\par
+\highlight1\cf0     \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 incs\highlight15\cf14\b ;\highlight1\cf0\b0                                 \highlight5\cf4 // should be equal ops\par
+\highlight1\cf0 \tab \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 opsPerSecond\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 aborts\highlight15\cf14\b ;\highlight1\cf0\b0                               \highlight5\cf4 //\par
+\highlight15\cf14\b \}\highlight1\cf0\b0  \highlight17\cf16 Result\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\highlight17\cf16 Result\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 r\highlight15\cf14\b ;\highlight1\cf0\b0                                       \highlight5\cf4 // results\par
+\highlight17\cf16 UINT\highlight1\cf0  \highlight17\cf16 indx\highlight15\cf14\b ;\highlight1\cf0\b0                                       \highlight5\cf4 // results index\par
+\highlight1\cf0 \par
+\highlight19\cf18 volatile\highlight1\cf0  \highlight17\cf16 VINT\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 g\highlight15\cf14\b ;\highlight1\cf0\b0                                \highlight5\cf4 // NB: position of volatile\par
+\highlight1\cf0 \par
+\highlight5\cf4 //\par
+// test memory allocation [see lecture notes]\par
+//\par
+\highlight17\cf16 ALIGN\highlight15\cf14\b (\highlight7\cf6\b0 64\highlight15\cf14\b )\highlight1\cf0\b0  \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 cnt0\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight17\cf16 ALIGN\highlight15\cf14\b (\highlight7\cf6\b0 64\highlight15\cf14\b )\highlight1\cf0\b0  \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 cnt1\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight17\cf16 ALIGN\highlight15\cf14\b (\highlight7\cf6\b0 64\highlight15\cf14\b )\highlight1\cf0\b0  \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 cnt2\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 cnt3\highlight15\cf14\b ;\highlight1\cf0\b0                                     \highlight5\cf4 // NB: in Debug mode allocated in cache line occupied by cnt0\par
+\highlight1\cf0 \par
+\highlight5\cf4 //\par
+// PMS\par
+//\par
+\highlight13\cf12 #ifdef USEPMS\par
+\highlight1\cf0 \par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 fixedCtr0\highlight15\cf14\b ;\highlight1\cf0\b0                               \highlight5\cf4 // fixed counter 0 counts\par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 fixedCtr1\highlight15\cf14\b ;\highlight1\cf0\b0                               \highlight5\cf4 // fixed counter 1 counts\par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 fixedCtr2\highlight15\cf14\b ;\highlight1\cf0\b0                               \highlight5\cf4 // fixed counter 2 counts\par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 pmc0\highlight15\cf14\b ;\highlight1\cf0\b0                                    \highlight5\cf4 // performance counter 0 counts\par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 pmc1\highlight15\cf14\b ;\highlight1\cf0\b0                                    \highlight5\cf4 // performance counter 1 counts\par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 pmc2\highlight15\cf14\b ;\highlight1\cf0\b0                                    \highlight5\cf4 // performance counter 2 counts\par
+\highlight17\cf16 UINT64\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 pmc3\highlight15\cf14\b ;\highlight1\cf0\b0                                    \highlight5\cf4 // performance counter 2 counts\par
+\highlight1\cf0 \par
+\highlight5\cf4 //\par
+// zeroCounters\par
+//\par
+\highlight19\cf18 void\highlight1\cf0  \highlight17\cf16 zeroCounters\highlight15\cf14\b ()\highlight1\cf0\b0 \par
+\highlight15\cf14\b \{\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 int\highlight1\cf0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight7\cf6 4\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+            \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 j\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight7\cf6 3\highlight15\cf14\b )\highlight1\cf0\b0 \par
+                \highlight17\cf16 writeFIXED_CTR\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b );\highlight1\cf0\b0 \par
+            \highlight17\cf16 writePMC\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+\highlight5\cf4 //\par
+// void setupCounters()\par
+//\par
+\highlight19\cf18 void\highlight1\cf0  \highlight17\cf16 setupCounters\highlight15\cf14\b ()\highlight1\cf0\b0 \par
+\highlight15\cf14\b \{\highlight1\cf0\b0 \par
+    \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b (!\highlight17\cf16\b0 openPMS\highlight15\cf14\b ())\highlight1\cf0\b0 \par
+        \highlight17\cf16 quit\highlight15\cf14\b ();\highlight1\cf0\b0 \par
+\par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // enable FIXED counters\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight17\cf16 writeFIXED_CTR_CTRL\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 FIXED_CTR_RING123\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight7\cf6 8\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 FIXED_CTR_RING123\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight7\cf6 4\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 FIXED_CTR_RING123\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight17\cf16 writePERF_GLOBAL_CTRL\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight15\cf14\b (\highlight7\cf6\b0 0x07ULL\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight7\cf6 32\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight7\cf6 0x0f\highlight15\cf14\b );\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0 \par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // set up and enable general purpose counters\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight17\cf16 writePERFEVTSEL\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_EN\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_USR\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 RTM_RETIRED_START\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight17\cf16 writePERFEVTSEL\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 1\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_EN\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_USR\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 RTM_RETIRED_COMMIT\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight17\cf16 writePERFEVTSEL\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 2\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_IN_TXCP\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_IN_TX\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_EN\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_USR\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 CPU_CLK_UNHALTED_THREAD_P\highlight15\cf14\b );\highlight1\cf0\b0   \highlight5\cf4 // NB: TXCP in PMC2 ONLY\par
+\highlight1\cf0         \highlight17\cf16 writePERFEVTSEL\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 3\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_IN_TX\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_EN\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 PERFEVTSEL_USR\highlight1\cf0  \highlight15\cf14\b |\highlight1\cf0\b0  \highlight17\cf16 CPU_CLK_UNHALTED_THREAD_P\highlight15\cf14\b );\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+\highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+\highlight5\cf4 //\par
+// void saveCounters()\par
+//\par
+\highlight19\cf18 void\highlight1\cf0  \highlight17\cf16 saveCounters\highlight15\cf14\b ()\highlight1\cf0\b0 \par
+\highlight15\cf14\b \{\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight17\cf16 fixedCtr0\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ]\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 readFIXED_CTR\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight17\cf16 fixedCtr1\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ]\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 readFIXED_CTR\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 1\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight17\cf16 fixedCtr2\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ]\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 readFIXED_CTR\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 2\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight17\cf16 pmc0\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ]\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 readPMC\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight17\cf16 pmc1\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ]\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 readPMC\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 1\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight17\cf16 pmc2\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ]\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 readPMC\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 2\highlight15\cf14\b );\highlight1\cf0\b0 \par
+        \highlight17\cf16 pmc3\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ]\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 readPMC\highlight15\cf14\b (\highlight17\cf16\b0 i\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 3\highlight15\cf14\b );\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+\par
+\highlight5\cf4 //Locks - Kevin's stuff\par
+\highlight1\cf0 \par
+\highlight17\cf16 bakeryLock\highlight1\cf0  \highlight17\cf16 myBakeryLock\highlight15\cf14\b (\highlight17\cf16\b0 maxThread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\highlight17\cf16 testAndSetLock\highlight1\cf0  \highlight17\cf16 myTestAndSetLock\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight17\cf16 testAndTestAndSetLock\highlight1\cf0  \highlight17\cf16 myTestAndTestAndSet\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight17\cf16 MCS_lock\highlight1\cf0  \highlight17\cf16 myMCS_lock\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight17\cf16 DWORD\highlight1\cf0  \highlight17\cf16 tlsIndex\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 TlsAlloc\highlight15\cf14\b ();\highlight1\cf0\b0  \par
+\highlight5\cf4 //End Kevin's stuff\par
+\highlight1\cf0 \par
+\par
+\par
+\par
+\highlight5\cf4 //\par
+// worker\par
+//\par
+\highlight17\cf16 WORKER\highlight1\cf0  \highlight17\cf16 worker\highlight15\cf14\b (\highlight19\cf18\b0 void\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 vthread\highlight15\cf14\b )\highlight1\cf0\b0 \par
+\highlight15\cf14\b \{\highlight1\cf0\b0 \par
+    \highlight19\cf18 int\highlight1\cf0  \highlight17\cf16 thread\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 int\highlight15\cf14\b )((\highlight17\cf16\b0 size_t\highlight15\cf14\b )\highlight1\cf0\b0  \highlight17\cf16 vthread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\par
+    \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 n\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+    \highlight19\cf18 volatile\highlight1\cf0  \highlight17\cf16 VINT\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 gt\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 GINDX\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight15\cf14\b );\highlight1\cf0\b0  \par
+    \highlight19\cf18 volatile\highlight1\cf0  \highlight17\cf16 VINT\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 gs\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 GINDX\highlight15\cf14\b (\highlight17\cf16\b0 maxThread\highlight15\cf14\b );\highlight1\cf0\b0  \highlight5\cf4 //address  (g+maxThread*lineSz/sizeof(VINT)) \par
+\highlight1\cf0 \par
+\par
+\tab \highlight5\cf4 //MCS_lock stuff\par
+\highlight1\cf0     \highlight17\cf16 QNode\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 qn1\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight9\cf8\b new\highlight1\cf0\b0  \highlight17\cf16 QNode\highlight15\cf14\b ();\highlight1\cf0\b0  \highlight5\cf4 // at start of worker function\par
+\highlight1\cf0 \tab \highlight17\cf16 TlsSetValue\highlight15\cf14\b (\highlight17\cf16\b0 tlsIndex\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 qn1\highlight15\cf14\b );\highlight1\cf0\b0  \highlight5\cf4 // each worker thread gets its own QNode\par
+\highlight1\cf0     \highlight19\cf18 volatile\highlight1\cf0  \highlight17\cf16 QNode\highlight1\cf0  \highlight15\cf14\b *\highlight17\cf16\b0 qn\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 QNode\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 TlsGetValue\highlight15\cf14\b (\highlight17\cf16\b0 tlsIndex\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #if OPTYP == 2\par
+\highlight1\cf0     \highlight17\cf16 VINT\highlight1\cf0  \highlight17\cf16 x\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #elif OPTYP == 3\par
+\highlight1\cf0     \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 nabort\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+    \highlight17\cf16 runThreadOnCPU\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight1\cf0  \highlight15\cf14\b %\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\par
+    \highlight9\cf8\b while\highlight1\cf0\b0  \highlight15\cf14\b (\highlight7\cf6\b0 1\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+\par
+        \highlight5\cf4 //\par
+\highlight1\cf0         \highlight5\cf4 // do some work\par
+\highlight1\cf0         \highlight5\cf4 //\par
+\highlight1\cf0        \highlight5\cf4 // for (int i = 0; i < NOPS / 4; i++) \{\par
+\highlight1\cf0 \par
+            \highlight9\cf8\b switch\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 sharing\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+            \highlight9\cf8\b case\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b :\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight5\cf4 //No lock (baseline)\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b (!(*\highlight17\cf16\b0 gs\highlight1\cf0  \highlight15\cf14\b >=\highlight1\cf0\b0  \highlight7\cf6 10000000\highlight15\cf14\b ))\{\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \tab \highlight17\cf16 INC\highlight15\cf14\b (\highlight17\cf16\b0 gs\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight5\cf4 //INC(gs);                    //   (*gs)++      gs = GINDX(maxThread);       GINDX(maxThread) ===  (g+maxThread*lineSz/sizeof(VINT)) \par
+\highlight1\cf0                \highlight5\cf4 // INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0                 \highlight9\cf8\b break\highlight15\cf14 ;\highlight1\cf0\b0 \par
+\par
+            \highlight9\cf8\b case\highlight1\cf0\b0  \highlight7\cf6 25\highlight15\cf14\b :\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight5\cf4 //Bakery Lock \par
+\highlight1\cf0                 \highlight17\cf16 myBakeryLock\highlight15\cf14\b .\highlight17\cf16\b0 acquire\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b (!(*\highlight17\cf16\b0 gs\highlight1\cf0  \highlight15\cf14\b >=\highlight1\cf0\b0  \highlight7\cf6 10000000\highlight15\cf14\b ))\{\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \tab \highlight17\cf16 INC\highlight15\cf14\b (\highlight17\cf16\b0 gs\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+                \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight17\cf16 myBakeryLock\highlight15\cf14\b .\highlight17\cf16\b0 release\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+                \highlight9\cf8\b break\highlight15\cf14 ;\highlight1\cf0\b0 \par
+\par
+            \highlight9\cf8\b case\highlight1\cf0\b0  \highlight7\cf6 50\highlight15\cf14\b :\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight5\cf4 //TestAndSet lock\par
+\highlight1\cf0                 \highlight17\cf16 myTestAndSetLock\highlight15\cf14\b .\highlight17\cf16\b0 acquire\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b (!(*\highlight17\cf16\b0 gs\highlight1\cf0  \highlight15\cf14\b >=\highlight1\cf0\b0  \highlight7\cf6 10000000\highlight15\cf14\b ))\{\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \tab \highlight17\cf16 INC\highlight15\cf14\b (\highlight17\cf16\b0 gs\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+                \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight17\cf16 myTestAndSetLock\highlight15\cf14\b .\highlight17\cf16\b0 release\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+                \highlight9\cf8\b break\highlight15\cf14 ;\highlight1\cf0\b0 \par
+\par
+            \highlight9\cf8\b case\highlight1\cf0\b0  \highlight7\cf6 75\highlight15\cf14\b :\highlight1\cf0\b0 \par
+\par
+\tab \tab \tab \tab \highlight5\cf4 //TestAndTestAndSet lock\par
+\highlight1\cf0                 \highlight17\cf16 myTestAndTestAndSet\highlight15\cf14\b .\highlight17\cf16\b0 acquire\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b (!(*\highlight17\cf16\b0 gs\highlight1\cf0  \highlight15\cf14\b >=\highlight1\cf0\b0  \highlight7\cf6 10000000\highlight15\cf14\b ))\{\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \tab \highlight17\cf16 INC\highlight15\cf14\b (\highlight17\cf16\b0 gs\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+                \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight17\cf16 myTestAndTestAndSet\highlight15\cf14\b .\highlight17\cf16\b0 release\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+                \highlight9\cf8\b break\highlight15\cf14 ;\highlight1\cf0\b0 \par
+\par
+            \highlight9\cf8\b case\highlight1\cf0\b0  \highlight7\cf6 100\highlight15\cf14\b :\highlight1\cf0\b0 \par
+\par
+\tab \tab \tab \tab \highlight5\cf4 //MCS lock\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight17\cf16 myMCS_lock\highlight15\cf14\b .\highlight17\cf16\b0 acquire\highlight15\cf14\b (\highlight17\cf16\b0 qn\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 tlsIndex\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b (!(*\highlight17\cf16\b0 gs\highlight1\cf0  \highlight15\cf14\b >=\highlight1\cf0\b0  \highlight7\cf6 10000000\highlight15\cf14\b ))\{\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \tab \highlight17\cf16 INC\highlight15\cf14\b (\highlight17\cf16\b0 gs\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \tab \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+                \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight5\cf4 //INC(gs);\par
+\highlight1\cf0 \tab \tab \tab \tab \highlight17\cf16 myMCS_lock\highlight15\cf14\b .\highlight17\cf16\b0 release\highlight15\cf14\b (\highlight17\cf16\b0 qn\highlight15\cf14\b ,\highlight17\cf16\b0 tlsIndex\highlight15\cf14\b );\highlight1\cf0\b0 \par
+            \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+       \highlight5\cf4 // \}\par
+\highlight1\cf0         \highlight17\cf16 n\highlight1\cf0  \highlight15\cf14\b +=\highlight1\cf0\b0  \highlight17\cf16 NOPS\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+        \highlight5\cf4 //\par
+\highlight1\cf0         \highlight5\cf4 // check if runtime exceeded\par
+\highlight1\cf0         \highlight5\cf4 //\par
+\highlight1\cf0 \tab \highlight5\cf4 //\tab if ((getWallClockMS() - tstart) > NSECONDS*1000)\{\par
+\highlight1\cf0 \tab \tab \par
+\tab \tab \highlight5\cf4 //\}\par
+\highlight1\cf0           \highlight5\cf4 //  break;\par
+\highlight1\cf0 \par
+\tab \tab \par
+\tab \tab \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b (*\highlight17\cf16\b0 gs\highlight1\cf0  \highlight15\cf14\b >=\highlight1\cf0\b0  \highlight7\cf6 10000000\highlight15\cf14\b )\{\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight9\cf8\b break\highlight15\cf14 ;\highlight1\cf0\b0 \par
+\tab \tab \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+\tab \tab \highlight5\cf4 //we need to output how long it took.\par
+\highlight1\cf0 \tab \tab \highlight5\cf4 //so instead of measuring how many high it counts in 2 seconds\par
+\highlight1\cf0 \tab \tab \highlight5\cf4 //we are measuring how LONG it takes to count to 10 million in seconds.\par
+\highlight1\cf0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+    \highlight17\cf16 ops\highlight15\cf14\b [\highlight17\cf16\b0 thread\highlight15\cf14\b ]\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 n\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0     \highlight17\cf16 aborts\highlight15\cf14\b [\highlight17\cf16\b0 thread\highlight15\cf14\b ]\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 nabort\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0     \highlight9\cf8\b return\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+\highlight5\cf4 //\par
+// main\par
+//\par
+\highlight19\cf18 int\highlight1\cf0  \highlight17\cf16 main\highlight15\cf14\b ()\highlight1\cf0\b0 \par
+\highlight15\cf14\b \{\highlight1\cf0\b0 \par
+    \highlight17\cf16 ncpu\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 getNumberOfCPUs\highlight15\cf14\b ();\highlight1\cf0\b0    \highlight5\cf4 // number of logical CPUs\par
+\highlight1\cf0     \highlight17\cf16 maxThread\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 2\highlight1\cf0  \highlight15\cf14\b *\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0        \highlight5\cf4 // max number of threads\par
+\highlight1\cf0 \par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // get date\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight19\cf18 char\highlight1\cf0  \highlight17\cf16 dateAndTime\highlight15\cf14\b [\highlight7\cf6\b0 256\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+    \highlight17\cf16 getDateAndTime\highlight15\cf14\b (\highlight17\cf16\b0 dateAndTime\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight9\cf8\b sizeof\highlight15\cf14 (\highlight17\cf16\b0 dateAndTime\highlight15\cf14\b ));\highlight1\cf0\b0 \par
+\par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // console output\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 getHostName\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 getOSName\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " sharing "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 is64bitExe\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b ?\highlight1\cf0\b0  \highlight11\cf10 "(64"\highlight1\cf0  \highlight15\cf14\b :\highlight1\cf0\b0  \highlight11\cf10 "(32"\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "bit EXE)"\highlight1\cf0  \highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #ifdef _DEBUG\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " DEBUG"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #else\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " RELEASE"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " ["\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 OPSTR\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "]"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " NCPUS="\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " RAM="\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 getPhysicalMemSz\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 GB\highlight1\cf0  \highlight15\cf14\b -\highlight1\cf0\b0  \highlight7\cf6 1\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b /\highlight1\cf0\b0  \highlight17\cf16 GB\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "GB "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 dateAndTime\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #ifdef COUNTER64\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "COUNTER64"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #else\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "COUNTER32"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+#ifdef FALSESHARING\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " FALSESHARING"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " NOPS="\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 NOPS\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " NSECONDS="\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 NSECONDS\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " OPTYP="\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 OPTYP\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #ifdef USEPMS\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " USEPMS"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "Intel"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 cpu64bit\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b ?\highlight1\cf0\b0  \highlight11\cf10 "64"\highlight1\cf0  \highlight15\cf14\b :\highlight1\cf0\b0  \highlight11\cf10 "32"\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " family "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 cpuFamily\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " model "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 cpuModel\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " stepping "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 cpuStepping\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 cpuBrandString\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #ifdef USEPMS\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "performance monitoring version "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 pmversion\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 ", "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 nfixedCtr\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " x "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 fixedCtrW\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "bit fixed counters, "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 npmc\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 " x "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 pmcW\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "bit performance counters"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+\tab \highlight5\cf4 //Kevin's stuff\par
+\highlight1\cf0 \tab \highlight17\cf16 myBakeryLock\highlight15\cf14\b .\highlight17\cf16\b0 re_init\highlight15\cf14\b ();\highlight1\cf0\b0 \par
+\par
+\par
+\par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // get cache info\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight17\cf16 lineSz\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 getCacheLineSz\highlight15\cf14\b ();\highlight1\cf0\b0 \par
+    \highlight5\cf4 //lineSz *= 2;\par
+\highlight1\cf0 \par
+    \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b ((&\highlight17\cf16\b0 cnt3\highlight1\cf0  \highlight15\cf14\b >=\highlight1\cf0\b0  \highlight15\cf14\b &\highlight17\cf16\b0 cnt0\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b &&\highlight1\cf0\b0  \highlight15\cf14\b (&\highlight17\cf16\b0 cnt3\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight15\cf14\b (&\highlight17\cf16\b0 cnt0\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b /\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ))))\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "Warning: cnt3 shares cache line used by cnt0"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b ((&\highlight17\cf16\b0 cnt3\highlight1\cf0  \highlight15\cf14\b >=\highlight1\cf0\b0  \highlight15\cf14\b &\highlight17\cf16\b0 cnt1\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b &&\highlight1\cf0\b0  \highlight15\cf14\b (&\highlight17\cf16\b0 cnt3\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight15\cf14\b (&\highlight17\cf16\b0 cnt1\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight1\cf0  \highlight15\cf14\b /\highlight1\cf0\b0  \highlight9\cf8\b sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ))))\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "Warning: cnt3 shares cache line used by cnt1"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b ((&\highlight17\cf16\b0 cnt3\highlight1\cf0  \highlight15\cf14\b >=\highlight1\cf0\b0  \highlight15\cf14\b &\highlight17\cf16\b0 cnt2\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b &&\highlight1\cf0\b0  \highlight15\cf14\b (&\highlight17\cf16\b0 cnt3\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight15\cf14\b (&\highlight17\cf16\b0 cnt2\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight1\cf0  \highlight15\cf14\b /\highlight1\cf0\b0  \highlight9\cf8\b sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ))))\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "Warning: cnt2 shares cache line used by cnt1"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0 \par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // check if RTM supported\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b (!\highlight17\cf16\b0 rtmSupported\highlight15\cf14\b ())\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "RTM (restricted transactional memory) NOT supported by this CPU"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+        \highlight17\cf16 quit\highlight15\cf14\b ();\highlight1\cf0\b0 \par
+        \highlight9\cf8\b return\highlight1\cf0\b0  \highlight7\cf6 1\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // allocate global variable\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // NB: each element in g is stored in a different cache line to stop false sharing\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight17\cf16 threadH\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 THREADH\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 THREADH\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0              \highlight5\cf4 // thread handles\par
+\highlight1\cf0     \highlight17\cf16 ops\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT64\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0                    \highlight5\cf4 // for ops per thread\par
+\highlight1\cf0 \par
+\par
+\par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0     \highlight17\cf16 aborts\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT64\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0                 \highlight5\cf4 // for counting aborts\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+\highlight13\cf12 #ifdef FALSESHARING\par
+\highlight1\cf0     \highlight17\cf16 g\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 VINT\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b ((\highlight17\cf16\b0 maxThread\highlight15\cf14\b +\highlight7\cf6\b0 1\highlight15\cf14\b )*\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 VINT\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0                      \highlight5\cf4 // local and shared global variables\par
+\highlight13\cf12 #else\par
+\highlight1\cf0     \highlight17\cf16 g\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 VINT\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b ((\highlight17\cf16\b0 maxThread\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight7\cf6 1\highlight15\cf14\b )*\highlight17\cf16\b0 lineSz\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0                          \highlight5\cf4 // local and shared global variables\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+\highlight13\cf12 #ifdef USEPMS\par
+\highlight1\cf0 \par
+    \highlight17\cf16 fixedCtr0\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT64\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight7\cf6\b0 5\highlight15\cf14\b *\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0       \highlight5\cf4 // for fixed counter 0 results\par
+\highlight1\cf0     \highlight17\cf16 fixedCtr1\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT64\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight7\cf6\b0 5\highlight15\cf14\b *\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0       \highlight5\cf4 // for fixed counter 1 results\par
+\highlight1\cf0     \highlight17\cf16 fixedCtr2\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT64\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight7\cf6\b0 5\highlight15\cf14\b *\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0       \highlight5\cf4 // for fixed counter 2 results\par
+\highlight1\cf0     \highlight17\cf16 pmc0\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT64\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight7\cf6\b0 5\highlight15\cf14\b *\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0            \highlight5\cf4 // for performance counter 0 results\par
+\highlight1\cf0     \highlight17\cf16 pmc1\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT64\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight7\cf6\b0 5\highlight15\cf14\b *\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0            \highlight5\cf4 // for performance counter 1 results\par
+\highlight1\cf0     \highlight17\cf16 pmc2\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT64\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight7\cf6\b0 5\highlight15\cf14\b *\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0            \highlight5\cf4 // for performance counter 2 results\par
+\highlight1\cf0     \highlight17\cf16 pmc3\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT64\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight7\cf6\b0 5\highlight15\cf14\b *\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 UINT64\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0            \highlight5\cf4 // for performance counter 3 results\par
+\highlight1\cf0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+    \highlight17\cf16 r\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 Result\highlight15\cf14\b *)\highlight1\cf0\b0  \highlight17\cf16 ALIGNED_MALLOC\highlight15\cf14\b (\highlight7\cf6\b0 5\highlight15\cf14\b *\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 Result\highlight15\cf14\b ),\highlight1\cf0\b0  \highlight17\cf16 lineSz\highlight15\cf14\b );\highlight1\cf0\b0                    \highlight5\cf4 // for results\par
+\highlight1\cf0     \highlight17\cf16 memset\highlight15\cf14\b (\highlight17\cf16\b0 r\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight7\cf6 5\highlight15\cf14\b *\highlight17\cf16\b0 maxThread\highlight15\cf14\b *\highlight9\cf8 sizeof\highlight15\cf14 (\highlight17\cf16\b0 Result\highlight15\cf14\b ));\highlight1\cf0\b0                                            \highlight5\cf4 // zero\par
+\highlight1\cf0 \par
+    \highlight17\cf16 indx\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #ifdef USEPMS\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // set up performance monitor counters\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight17\cf16 setupCounters\highlight15\cf14\b ();\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // use thousands comma separator\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight17\cf16 setCommaLocale\highlight15\cf14\b ();\highlight1\cf0\b0 \par
+\par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // header\par
+\highlight1\cf0     \highlight5\cf4 //sharing\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 left\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 22\highlight15\cf14\b )<<\highlight1\cf0\b0  \highlight11\cf10 "lock type"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight17\cf16\b0 left\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 4\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "nt"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight17\cf16\b0 left\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 7\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "time"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight17\cf16\b0 left\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 20\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "ops"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight17\cf16\b0 left\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 20\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "ops per second"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 8\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "commit"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight17\cf16\b0 left\highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 22\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "---------"\highlight15\cf14\b ;\highlight1\cf0\b0               \highlight5\cf4 // sharing\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight17\cf16\b0 left\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 4\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "--"\highlight15\cf14\b ;\highlight1\cf0\b0         \highlight5\cf4 // nt\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight17\cf16\b0 left\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 7\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "----"\highlight15\cf14\b ;\highlight1\cf0\b0         \highlight5\cf4 // time\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight17\cf16\b0 left\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 20\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "---"\highlight15\cf14\b ;\highlight1\cf0\b0       \highlight5\cf4 // ops\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight17\cf16\b0 left\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 20\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "--------------"\highlight15\cf14\b ;\highlight1\cf0\b0        \highlight5\cf4 // rel\par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 8\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "------"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // boost process priority\par
+\highlight1\cf0     \highlight5\cf4 // boost current thread priority to make sure all threads created before they start to run\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight13\cf12 #ifdef WIN32\par
+\highlight1\cf0     \highlight17\cf16 SetPriorityClass\highlight15\cf14\b (\highlight17\cf16\b0 GetCurrentProcess\highlight15\cf14\b (),\highlight1\cf0\b0  \highlight17\cf16 ABOVE_NORMAL_PRIORITY_CLASS\highlight15\cf14\b );\highlight1\cf0\b0 \par
+    \highlight17\cf16 SetThreadPriority\highlight15\cf14\b (\highlight17\cf16\b0 GetCurrentThread\highlight15\cf14\b (),\highlight1\cf0\b0  \highlight17\cf16 THREAD_PRIORITY_ABOVE_NORMAL\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // run tests\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 ops1\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 1\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\tab \highlight5\cf4 //\par
+\highlight1\cf0     \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 sharing\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 sharing\highlight1\cf0  \highlight15\cf14\b <=\highlight1\cf0\b0  \highlight7\cf6 100\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 sharing\highlight1\cf0  \highlight15\cf14\b +=\highlight1\cf0\b0  \highlight7\cf6 25\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+\tab \tab \highlight5\cf4 //sharing is totally irrelevent here, this is just me being lazy\par
+\highlight1\cf0 \tab \tab \highlight9\cf8\b if\highlight15\cf14 (\highlight17\cf16\b0 sharing\highlight1\cf0  \highlight15\cf14\b ==\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b )\{\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight17\cf16 lock_type\highlight15\cf14\b =\highlight11\cf10\b0 "NoLock"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \highlight15\cf14\b \}\highlight9\cf8 else\highlight1\cf0\b0  \highlight9\cf8\b if\highlight15\cf14 (\highlight17\cf16\b0 sharing\highlight1\cf0  \highlight15\cf14\b ==\highlight1\cf0\b0  \highlight7\cf6 25\highlight15\cf14\b )\{\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight17\cf16 lock_type\highlight15\cf14\b =\highlight11\cf10\b0 "BakeryLock"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \highlight15\cf14\b \}\highlight9\cf8 else\highlight1\cf0\b0  \highlight9\cf8\b if\highlight15\cf14 (\highlight17\cf16\b0 sharing\highlight1\cf0  \highlight15\cf14\b ==\highlight1\cf0\b0  \highlight7\cf6 50\highlight15\cf14\b )\{\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight17\cf16 lock_type\highlight15\cf14\b =\highlight11\cf10\b0 "TestAndSetLock"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \highlight15\cf14\b \}\highlight9\cf8 else\highlight1\cf0\b0  \highlight9\cf8\b if\highlight15\cf14 (\highlight17\cf16\b0 sharing\highlight1\cf0  \highlight15\cf14\b ==\highlight1\cf0\b0  \highlight7\cf6 75\highlight15\cf14\b )\{\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight17\cf16 lock_type\highlight15\cf14\b =\highlight11\cf10\b0 "TestAndTestAndSetLock"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \highlight15\cf14\b \}\highlight9\cf8 else\highlight1\cf0\b0  \highlight9\cf8\b if\highlight15\cf14 (\highlight17\cf16\b0 sharing\highlight1\cf0  \highlight15\cf14\b ==\highlight1\cf0\b0  \highlight7\cf6 100\highlight15\cf14\b )\{\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight17\cf16 lock_type\highlight15\cf14\b =\highlight11\cf10\b0 "MCSLock"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\tab \tab \highlight5\cf4 // r[indx].lock_type = lock_type;\par
+\highlight1\cf0 \par
+        \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 int\highlight1\cf0  \highlight17\cf16 nt\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 1\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 nt\highlight1\cf0  \highlight15\cf14\b <=\highlight1\cf0\b0  \highlight17\cf16 maxThread\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 nt\highlight1\cf0  \highlight15\cf14\b *=\highlight1\cf0\b0  \highlight7\cf6 2\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 indx\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+\par
+            \highlight5\cf4 //\par
+\highlight1\cf0             \highlight5\cf4 //  zero shared memory\par
+\highlight1\cf0             \highlight5\cf4 //\par
+\highlight1\cf0 \tab \tab \tab \par
+            \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 int\highlight1\cf0  \highlight17\cf16 thread\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 thread\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 nt\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 thread\highlight15\cf14\b ++)\highlight1\cf0\b0 \par
+                \highlight15\cf14\b *(\highlight17\cf16\b0 GINDX\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight15\cf14\b ))\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0    \highlight5\cf4 // thread local\par
+\highlight1\cf0             \highlight15\cf14\b *(\highlight17\cf16\b0 GINDX\highlight15\cf14\b (\highlight17\cf16\b0 maxThread\highlight15\cf14\b ))\highlight1\cf0\b0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0     \highlight5\cf4 // shared\par
+\highlight1\cf0 \par
+\highlight13\cf12 #ifdef USEPMS\par
+\highlight1\cf0             \highlight17\cf16 zeroCounters\highlight15\cf14\b ();\highlight1\cf0\b0              \highlight5\cf4 // zero PMS counters\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+            \highlight5\cf4 //\par
+\highlight1\cf0             \highlight5\cf4 // get start time\par
+\highlight1\cf0             \highlight5\cf4 //\par
+\highlight1\cf0             \highlight17\cf16 tstart\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 getWallClockMS\highlight15\cf14\b ();\highlight1\cf0\b0 \par
+\par
+            \highlight5\cf4 //\par
+\highlight1\cf0             \highlight5\cf4 // create worker threads\par
+\highlight1\cf0             \highlight5\cf4 //\par
+\highlight1\cf0             \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 int\highlight1\cf0  \highlight17\cf16 thread\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 thread\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 nt\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 thread\highlight15\cf14\b ++)\highlight1\cf0\b0 \par
+                \highlight17\cf16 createThread\highlight15\cf14\b (&\highlight17\cf16\b0 threadH\highlight15\cf14\b [\highlight17\cf16\b0 thread\highlight15\cf14\b ],\highlight1\cf0\b0  \highlight17\cf16 worker\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 void\highlight15\cf14\b *)(\highlight17\cf16\b0 size_t\highlight15\cf14\b )\highlight17\cf16\b0 thread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\par
+            \highlight5\cf4 //\par
+\highlight1\cf0             \highlight5\cf4 // wait for ALL worker threads to finish\par
+\highlight1\cf0             \highlight5\cf4 //\par
+\highlight1\cf0             \highlight17\cf16 waitForThreadsToFinish\highlight15\cf14\b (\highlight17\cf16\b0 nt\highlight15\cf14\b ,\highlight1\cf0\b0  \highlight17\cf16 threadH\highlight15\cf14\b );\highlight1\cf0\b0 \par
+            \highlight17\cf16 UINT64\highlight1\cf0  \highlight17\cf16 rt\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 getWallClockMS\highlight15\cf14\b ()\highlight1\cf0\b0  \highlight15\cf14\b -\highlight1\cf0\b0  \highlight17\cf16 tstart\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #ifdef USEPMS\par
+\highlight1\cf0             \highlight17\cf16 saveCounters\highlight15\cf14\b ();\highlight1\cf0\b0              \highlight5\cf4 // save PMS counters\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+            \highlight5\cf4 //\par
+\highlight1\cf0             \highlight5\cf4 // save results and output summary to console\par
+\highlight1\cf0             \highlight5\cf4 //\par
+\highlight1\cf0 \tab \tab \tab \par
+            \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 int\highlight1\cf0  \highlight17\cf16 thread\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 thread\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 nt\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 thread\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+                \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 ops\highlight1\cf0  \highlight15\cf14\b +=\highlight1\cf0\b0  \highlight17\cf16 ops\highlight15\cf14\b [\highlight17\cf16\b0 thread\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+                \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 incs\highlight1\cf0  \highlight15\cf14\b +=\highlight1\cf0\b0  \highlight15\cf14\b *(\highlight17\cf16\b0 GINDX\highlight15\cf14\b (\highlight17\cf16\b0 thread\highlight15\cf14\b ));\highlight1\cf0\b0 \par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0                 \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 aborts\highlight1\cf0  \highlight15\cf14\b +=\highlight1\cf0\b0  \highlight17\cf16 aborts\highlight15\cf14\b [\highlight17\cf16\b0 thread\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0             \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+            \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 incs\highlight1\cf0  \highlight15\cf14\b +=\highlight1\cf0\b0  \highlight15\cf14\b *(\highlight17\cf16\b0 GINDX\highlight15\cf14\b (\highlight17\cf16\b0 maxThread\highlight15\cf14\b ));\highlight1\cf0\b0 \par
+            \highlight9\cf8\b if\highlight1\cf0\b0  \highlight15\cf14\b ((\highlight17\cf16\b0 sharing\highlight1\cf0  \highlight15\cf14\b ==\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b &&\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 nt\highlight1\cf0  \highlight15\cf14\b ==\highlight1\cf0\b0  \highlight7\cf6 1\highlight15\cf14\b ))\highlight1\cf0\b0 \par
+                \highlight17\cf16 ops1\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 ops\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+            \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 sharing\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 sharing\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 lock_type\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 lock_type\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+            \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 nt\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 nt\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+            \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 rt\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 rt\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \tab \par
+\tab \tab \tab \highlight3\cf2 /*\par
+            cout << setw(6) << lock_type;\par
+            cout << setw(4) << nt;\par
+            cout << setw(6) << fixed << setprecision(2) << (double) rt / 1000;\par
+            cout << setw(16) << r[indx].ops;\par
+            cout << setw(6) << fixed << setprecision(2) << (double) r[indx].ops / ops1;\par
+\tab \tab \tab */\highlight1\cf0 \par
+\par
+\tab \tab \tab \highlight5\cf4 //get ops per second\par
+\highlight1\cf0 \tab \tab \tab \highlight19\cf18 double\highlight1\cf0  \highlight17\cf16 opsPerSecond\highlight15\cf14\b =\highlight7\cf6\b0 0\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight19\cf18 double\highlight1\cf0  \highlight17\cf16 rt_in_seconds\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 double\highlight15\cf14\b )\highlight1\cf0\b0  \highlight17\cf16 rt\highlight1\cf0  \highlight15\cf14\b /\highlight1\cf0\b0  \highlight7\cf6 1000\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight17\cf16 opsPerSecond\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight15\cf14\b ((\highlight19\cf18\b0 double\highlight15\cf14\b )\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 ops\highlight15\cf14\b )/\highlight1\cf0\b0  \highlight17\cf16 rt_in_seconds\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 opsPerSecond\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight17\cf16 opsPerSecond\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\par
+\tab \tab \tab \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 left\highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 22\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 lock_type\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 left\highlight15\cf14\b <<\highlight17\cf16\b0 setw\highlight15\cf14\b (\highlight7\cf6\b0 4\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 nt\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 left\highlight15\cf14\b <<\highlight17\cf16\b0 setw\highlight15\cf14\b (\highlight7\cf6\b0 7\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 fixed\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setprecision\highlight15\cf14\b (\highlight7\cf6\b0 2\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 double\highlight15\cf14\b )\highlight1\cf0\b0  \highlight17\cf16 rt\highlight1\cf0  \highlight15\cf14\b /\highlight1\cf0\b0  \highlight7\cf6 1000\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 left\highlight15\cf14\b <<\highlight17\cf16\b0 setw\highlight15\cf14\b (\highlight7\cf6\b0 20\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 ops\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 left\highlight15\cf14\b <<\highlight17\cf16\b0 setw\highlight15\cf14\b (\highlight7\cf6\b0 20\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 fixed\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setprecision\highlight15\cf14\b (\highlight7\cf6\b0 0\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 opsPerSecond\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setw\highlight15\cf14\b (\highlight7\cf6\b0 7\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 fixed\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 setprecision\highlight15\cf14\b (\highlight7\cf6\b0 0\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight7\cf6 100.0\highlight1\cf0  \highlight15\cf14\b *\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 ops\highlight1\cf0  \highlight15\cf14\b -\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 aborts\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b /\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 indx\highlight15\cf14\b ].\highlight17\cf16\b0 ops\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "%"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+           \highlight5\cf4 // if (r[indx].ops != r[indx].incs)\par
+\highlight1\cf0            \highlight5\cf4 //     cout << " ERROR incs " << setw(3) << fixed << setprecision(0) << 100.0 * r[indx].incs / r[indx].ops << "% effective";\par
+\highlight1\cf0 \tab \tab \tab \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight11\cf10\b0 "\\n Global Variable = "\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b *\highlight17\cf16\b0 GINDX\highlight15\cf14\b (\highlight17\cf16\b0 maxThread\highlight15\cf14\b );\highlight1\cf0\b0 \par
+\tab \tab \tab \highlight5\cf4 //\par
+\highlight1\cf0 \tab \tab \tab \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+            \highlight5\cf4 //\par
+\highlight1\cf0             \highlight5\cf4 // delete thread handles\par
+\highlight1\cf0             \highlight5\cf4 //\par
+\highlight1\cf0             \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight19\cf18\b0 int\highlight1\cf0  \highlight17\cf16 thread\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 thread\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 nt\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 thread\highlight15\cf14\b ++)\highlight1\cf0\b0 \par
+                \highlight17\cf16 closeThread\highlight15\cf14\b (\highlight17\cf16\b0 threadH\highlight15\cf14\b [\highlight17\cf16\b0 thread\highlight15\cf14\b ]);\highlight1\cf0\b0 \par
+\par
+        \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\tab \tab \highlight17\cf16 cout\highlight15\cf14\b <<\highlight17\cf16\b0 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\tab \highlight5\cf4 //cout <<"\\nGlobal variable = " << *GINDX(maxThread)<<"\\n";\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // output results so they can easily be pasted into a spread sheet from console window\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight17\cf16 setLocale\highlight15\cf14\b ();\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "lock_type/nt/rt/ops/ops_per_second"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "/aborts"\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 indx\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b ].\highlight17\cf16\b0 lock_type\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0   \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b ].\highlight17\cf16\b0 nt\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b ].\highlight17\cf16\b0 rt\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0   \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b ].\highlight17\cf16\b0 ops\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b ].\highlight17\cf16\b0 opsPerSecond\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #if OPTYP == 3\par
+\highlight1\cf0         \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 r\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b ].\highlight17\cf16\b0 aborts\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0         \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\highlight13\cf12 #ifdef USEPMS\par
+\highlight1\cf0 \par
+    \highlight5\cf4 //\par
+\highlight1\cf0     \highlight5\cf4 // output PMS counters\par
+\highlight1\cf0     \highlight5\cf4 //\par
+\highlight1\cf0     \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "FIXED_CTR0 instructions retired"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 indx\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ++)\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b ((\highlight17\cf16\b0 j\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b ?\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b :\highlight1\cf0\b0  \highlight11\cf10 ""\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 fixedCtr0\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "FIXED_CTR1 unhalted core cycles"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 indx\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ++)\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b ((\highlight17\cf16\b0 j\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b ?\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b :\highlight1\cf0\b0  \highlight11\cf10 ""\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 fixedCtr1\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "FIXED_CTR2 unhalted reference cycles"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 indx\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ++\highlight1\cf0\b0  \highlight15\cf14\b )\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b ((\highlight17\cf16\b0 j\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b ?\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b :\highlight1\cf0\b0  \highlight11\cf10 ""\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 fixedCtr2\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "PMC0 RTM RETIRED START"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 indx\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ++\highlight1\cf0\b0  \highlight15\cf14\b )\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b ((\highlight17\cf16\b0 j\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b ?\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b :\highlight1\cf0\b0  \highlight11\cf10 ""\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 pmc0\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "PMC1 RTM RETIRED COMMIT"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 indx\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ++\highlight1\cf0\b0  \highlight15\cf14\b )\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b ((\highlight17\cf16\b0 j\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b ?\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b :\highlight1\cf0\b0  \highlight11\cf10 ""\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 pmc1\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "PMC2 unhalted core cycles in committed transactions"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 indx\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ++\highlight1\cf0\b0  \highlight15\cf14\b )\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b ((\highlight17\cf16\b0 j\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b ?\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b :\highlight1\cf0\b0  \highlight11\cf10 ""\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 pmc2\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight11\cf10 "PMC3 unhalted core cycles in committed and aborted transactions"\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 indx\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 i\highlight15\cf14\b ++)\highlight1\cf0\b0  \highlight15\cf14\b \{\highlight1\cf0\b0 \par
+        \highlight9\cf8\b for\highlight1\cf0\b0  \highlight15\cf14\b (\highlight17\cf16\b0 UINT\highlight1\cf0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b =\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight1\cf0  \highlight15\cf14\b <\highlight1\cf0\b0  \highlight17\cf16 ncpu\highlight15\cf14\b ;\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ++\highlight1\cf0\b0  \highlight15\cf14\b )\highlight1\cf0\b0 \par
+            \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight15\cf14\b ((\highlight17\cf16\b0 j\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b ?\highlight1\cf0\b0  \highlight11\cf10 "/"\highlight1\cf0  \highlight15\cf14\b :\highlight1\cf0\b0  \highlight11\cf10 ""\highlight15\cf14\b )\highlight1\cf0\b0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 pmc3\highlight15\cf14\b [\highlight17\cf16\b0 i\highlight15\cf14\b *\highlight17\cf16\b0 ncpu\highlight1\cf0  \highlight15\cf14\b +\highlight1\cf0\b0  \highlight17\cf16 j\highlight15\cf14\b ];\highlight1\cf0\b0 \par
+        \highlight17\cf16 cout\highlight1\cf0  \highlight15\cf14\b <<\highlight1\cf0\b0  \highlight17\cf16 endl\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+    \highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+    \highlight17\cf16 closePMS\highlight15\cf14\b ();\highlight1\cf0\b0                  \highlight5\cf4 // close PMS counters\par
+\highlight1\cf0 \par
+\highlight13\cf12 #endif\par
+\highlight1\cf0 \par
+    \highlight17\cf16 quit\highlight15\cf14\b ();\highlight1\cf0\b0 \par
+\par
+    \highlight9\cf8\b return\highlight1\cf0\b0  \highlight7\cf6 0\highlight15\cf14\b ;\highlight1\cf0\b0 \par
+\par
+\highlight15\cf14\b \}\highlight1\cf0\b0 \par
+\par
+\highlight5\cf4 // eof}

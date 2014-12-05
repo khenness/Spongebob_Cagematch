@@ -1,0 +1,62 @@
+﻿Build started 05-Dec-14 12:42:51 PM.
+     1>Project "C:\Users\Kevin\Documents\Visual Studio 2012\Projects\Point_Light\OpenGl_Lighting\OpenGl_Lighting.vcxproj" on node 2 (Build target(s)).
+     1>ClCompile:
+         C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\CL.exe /c /I"C:\Users\Kevin\Documents\Visual Studio 2012\libs\include" /I"C:\Users\Kevin\Documents\Visual Studio 2012\libs\include\FREETYPE\freetype" /ZI /nologo /W3 /WX- /Od /Oy- /D _MBCS /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Fo"Debug\\" /Fd"Debug\vc110.pdb" /Gd /TP /analyze- /errorReport:prompt dirLight.cpp flyingCamera.cpp fog.cpp objModel.cpp openGLControl.cpp pointLight.cpp renderScene.cpp shaders.cpp skybox.cpp static_geometry.cpp texture.cpp vertexBufferObject.cpp win_OpenGLApp.cpp
+         win_OpenGLApp.cpp
+         vertexBufferObject.cpp
+         texture.cpp
+         static_geometry.cpp
+         skybox.cpp
+         shaders.cpp
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\shaders.cpp(48): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 c:\program files (x86)\microsoft visual studio 11.0\vc\include\stdio.h(357) : see declaration of 'sprintf'
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\shaders.cpp(72): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 c:\program files (x86)\microsoft visual studio 11.0\vc\include\stdio.h(218) : see declaration of 'fopen'
+         renderScene.cpp
+         GLM: rotate function taking degrees as a parameter is deprecated. #define GLM_FORCE_RADIANS before including GLM headers to remove this message.
+         pointLight.cpp
+         openGLControl.cpp
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\openglcontrol.cpp(173): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 c:\program files (x86)\microsoft visual studio 11.0\vc\include\stdio.h(357) : see declaration of 'sprintf'
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\openglcontrol.cpp(174): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 c:\program files (x86)\microsoft visual studio 11.0\vc\include\stdio.h(357) : see declaration of 'sprintf'
+         GLM: perspective function taking degrees as a parameter is deprecated. #define GLM_FORCE_RADIANS before including GLM headers to remove this message.
+         objModel.cpp
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\objmodel.cpp(72): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 c:\program files (x86)\microsoft visual studio 11.0\vc\include\stdio.h(218) : see declaration of 'fopen'
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\objmodel.cpp(143): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 c:\program files (x86)\microsoft visual studio 11.0\vc\include\stdio.h(311) : see declaration of 'sscanf'
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\objmodel.cpp(153): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 c:\program files (x86)\microsoft visual studio 11.0\vc\include\stdio.h(311) : see declaration of 'sscanf'
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\objmodel.cpp(163): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 c:\program files (x86)\microsoft visual studio 11.0\vc\include\stdio.h(311) : see declaration of 'sscanf'
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\objmodel.cpp(263): warning C4018: '<' : signed/unsigned mismatch
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\objmodel.cpp(283): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+                 c:\program files (x86)\microsoft visual studio 11.0\vc\include\stdio.h(218) : see declaration of 'fopen'
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\objmodel.cpp(331): warning C4018: '<' : signed/unsigned mismatch
+         fog.cpp
+         flyingCamera.cpp
+     1>c:\users\kevin\documents\visual studio 2012\projects\point_light\opengl_lighting\flyingcamera.cpp(8): warning C4244: 'initializing' : conversion from 'double' to 'const float', possible loss of data
+         GLM: rotate function taking degrees as a parameter is deprecated. #define GLM_FORCE_RADIANS before including GLM headers to remove this message.
+         dirLight.cpp
+         Generating Code...
+       Link:
+         C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\Kevin\Documents\Visual Studio 2012\Projects\Point_Light\Debug\OpenGl_Lighting.exe" /INCREMENTAL /NOLOGO /LIBPATH:"C:\Users\Kevin\Documents\Visual Studio 2012\libs" glew32.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Users\Kevin\Documents\Visual Studio 2012\Projects\Point_Light\Debug\OpenGl_Lighting.pdb" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Kevin\Documents\Visual Studio 2012\Projects\Point_Light\Debug\OpenGl_Lighting.lib" /MACHINE:X86 Debug\dirLight.obj
+         Debug\flyingCamera.obj
+         Debug\fog.obj
+         Debug\objModel.obj
+         Debug\openGLControl.obj
+         Debug\pointLight.obj
+         Debug\renderScene.obj
+         Debug\shaders.obj
+         Debug\skybox.obj
+         Debug\static_geometry.obj
+         Debug\texture.obj
+         Debug\vertexBufferObject.obj
+         Debug\win_OpenGLApp.obj
+         OpenGl_Lighting.vcxproj -> C:\Users\Kevin\Documents\Visual Studio 2012\Projects\Point_Light\Debug\OpenGl_Lighting.exe
+     1>Done Building Project "C:\Users\Kevin\Documents\Visual Studio 2012\Projects\Point_Light\OpenGl_Lighting\OpenGl_Lighting.vcxproj" (Build target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:49.29

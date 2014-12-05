@@ -55,7 +55,7 @@ bool loadOBJ(
                 }else if ( strcmp( lineHeader, "vt" ) == 0 ){
                         glm::vec2 uv;
                         fscanf(file, "%f %f\n", &uv.x, &uv.y );
-                        uv.y = -uv.y; // Invert V coordinate since we will only use DDS texture, which are inverted. Remove if you want to use TGA or BMP loaders.
+                       // uv.y = -uv.y; // Invert V coordinate since we will only use DDS texture, which are inverted. Remove if you want to use TGA or BMP loaders.
                         temp_uvs.push_back(uv);
                 }else if ( strcmp( lineHeader, "vn" ) == 0 ){
                         glm::vec3 normal;
@@ -92,8 +92,10 @@ bool loadOBJ(
                         char stupidBuffer[1000];
                         fgets(stupidBuffer, 1000, file);
                 }
+				
 
         }
+
 
         // For each vertex of each triangle
         for( unsigned int i=0; i<vertexIndices.size(); i++ ){
@@ -114,7 +116,7 @@ bool loadOBJ(
                 out_normals .push_back(normal);
         
         }
-
+		printf("Finished loading OBJ file %s!\n", path);
         return true;
 }
 

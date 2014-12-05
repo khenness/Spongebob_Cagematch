@@ -64,7 +64,7 @@ int main( void )
         glDepthFunc(GL_LESS); 
 
         // Cull triangles which normal is not towards the camera
-        glEnable(GL_CULL_FACE);
+        //glEnable(GL_CULL_FACE);
 
         GLuint VertexArrayID;
         glGenVertexArrays(1, &VertexArrayID);
@@ -73,12 +73,16 @@ int main( void )
         // Create and compile our GLSL program from the shaders
         GLuint programID = LoadShaders( "TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader" );
 
+		glBindAttribLocation (programID, 0, "vertexPosition_modelspace");
+		glBindAttribLocation (programID, 1, "vertexUV");
+
         // Get a handle for our "MVP" uniform
         GLuint MatrixID = glGetUniformLocation(programID, "MVP");
 
         // Load the texture
       //  GLuint Texture = loadDDS("uvmap.DDS");
-        
+          GLuint Texture = loadBMP_custom("robothead.bmp");
+
         // Get a handle for our "myTextureSampler" uniform
         GLuint TextureID  = glGetUniformLocation(programID, "myTextureSampler");
 
@@ -88,12 +92,20 @@ int main( void )
         std::vector<glm::vec3> normals; // Won't be used at the moment.
 		
 
-        bool res = loadOBJ("robothead.obj", vertices, uvs, normals);
+        //bool res = loadOBJ("robothead.obj", vertices, uvs, normals);
+		bool res = loadOBJ("Arena.obj", vertices, uvs, normals);
+		//bool res = loadOBJ("boxingring.obj", vertices, uvs, normals);
+		
 		if (res == false){
 			printf("loadOBJ function failed!");
-			exit;
 		}
         // Load it into a VBO
+		//if(uvs.size==0){
+			printf("uvs[0] = %f,%f\n",uvs[0].x,uvs[0].y);
+			printf("uvs[1] = %f,%f\n",uvs[1].x,uvs[1].y);
+			printf("uvs[2] = %f,%f\n",uvs[2].x,uvs[2].y);
+		//}
+
 
         GLuint vertexbuffer;
         glGenBuffers(1, &vertexbuffer);
@@ -123,13 +135,15 @@ int main( void )
                 // Send our transformation to the currently bound shader, 
                 // in the "MVP" uniform
                 glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
-				/*
+				
+				
                 // Bind our texture in Texture Unit 0
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, Texture);
                 // Set our "myTextureSampler" sampler to user Texture Unit 0
                 glUniform1i(TextureID, 0);
-				*/
+				
+
                 // 1rst attribute buffer : vertices
                 glEnableVertexAttribArray(0);
                 glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
