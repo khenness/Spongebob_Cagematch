@@ -93,7 +93,7 @@ void initScene(LPVOID lpParam)
 	}
 
 	// Add building to VBO
-
+	/*
 	FOR(i, 24)
 	{
 		vboSceneObjects.addData(&vBuilding[i], sizeof(glm::vec3));
@@ -101,7 +101,7 @@ void initScene(LPVOID lpParam)
 		vboSceneObjects.addData(&vCoord, sizeof(glm::vec2));
 		vboSceneObjects.addData(&vBuildingNormals[i/6], sizeof(glm::vec3));
 	}
-
+	*/
 	iTorusFaces = generateTorus(vboSceneObjects, 7.0f, 2.0f, 20, 20);
 	vboSceneObjects.uploadDataToGPU(GL_STATIC_DRAW);
 
@@ -208,6 +208,11 @@ namespace FogParameters
 
 glm::vec3 vLightPos = glm::vec3(0.0f, 10.0f, 20.0f);
 
+glm::vec3 thorPos = glm::vec3(0.0f, 20.0f, 20.0f);
+
+glm::vec3 enemyPos = glm::vec3(0.0f, 10.0f, -20.0f);
+
+
 void renderColoredCube()
 {
 	glm::vec3 vColors[] = 
@@ -224,6 +229,12 @@ void renderColoredCube()
 		spColor.setUniform("vColor", glm::vec4(vColors[i].x, vColors[i].y, vColors[i].z, 1.0f));
 		glDrawArrays(GL_TRIANGLES, i*6, 6);
 	}
+}
+
+
+int linear_distance(int x1,int y1,int x2,int y2){
+
+	return sqrt(pow((double)(x2-x1), 2)+pow((double)(y2-y1), 2));
 }
 
 void renderScene(LPVOID lpParam)
@@ -292,7 +303,7 @@ void renderScene(LPVOID lpParam)
 	glDrawArrays(GL_TRIANGLES, 42, 24);
 
 	// Create a box pile inside "building"
-
+	/*
 	tTextures[1].bindTexture();
 
 	SFOR(nb, 1, 9)
@@ -309,9 +320,9 @@ void renderScene(LPVOID lpParam)
 			glDrawArrays(GL_TRIANGLES, 0, 36);
 		}
 	}
-
+	*/
 	// Render 3 rotated tori to create interesting object
-
+	/*
 	tTextures[2].bindTexture();
 	
 	// Now it's gonna float in the air
@@ -334,21 +345,36 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
 	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
 	glDrawArrays(GL_TRIANGLES, 66, iTorusFaces*3);
-
+	*/
 
 	
 	// Render Thor
-
-	mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(-60, 0, 0));
-	mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+90.0f, glm::vec3(0.0f, 1.0f, 0.0f));
+	/*
+	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(-60, 0, 0));
+	mModelMatrix = glm::translate(glm::mat4(1.0), thorPos);
+	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+90.0f, glm::vec3(0.0f, 1.0f, 0.0f));
+	//mModelMatrix = glm::scale(mModelMatrix, glm::vec3(20, 20, 20));
 	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
 	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
 	mdlThor.renderModel();
-
+	*/
 	// Render SpongeBob :D
-
+	//float player_angle = 0.0;
 	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(60, 0, 0));
 	mModelMatrix = glm::translate(glm::mat4(1.0), vLightPos);
+	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
+	//mModelMatrix = glm::scale(mModelMatrix, glm::vec3(50, 50, 50));
+	mModelMatrix = glm::scale(mModelMatrix, glm::vec3(20, 20, 20));
+	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
+	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
+	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
+	mdlSpongeBob.renderModel();
+
+
+	// Render evil SpongeBob :O
+
+	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(60, 0, 0));
+	mModelMatrix = glm::translate(glm::mat4(1.0), enemyPos);
 	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
 	//mModelMatrix = glm::scale(mModelMatrix, glm::vec3(50, 50, 50));
 	mModelMatrix = glm::scale(mModelMatrix, glm::vec3(20, 20, 20));
@@ -357,8 +383,11 @@ void renderScene(LPVOID lpParam)
 	mdlSpongeBob.renderModel();
 
 
-	//Spongebob cannot leave the ring
+	//enemyPos
 
+
+	//Spongebob cannot leave the ring
+	
 	int ring_radius = 30;
 	if(vLightPos.x > ring_radius ){
 		vLightPos.x=ring_radius;
@@ -373,8 +402,46 @@ void renderScene(LPVOID lpParam)
 	if(vLightPos.z < -ring_radius ){
 		vLightPos.z=-ring_radius;
 	}
+	
+	//evil Spongebob also cannot leave the ring
+		if(enemyPos.x > ring_radius ){
+		enemyPos.x=ring_radius;
+	}
+	if(enemyPos.x < -ring_radius ){
+		enemyPos.x=-ring_radius;
+	}
+
+	if(enemyPos.z > ring_radius ){
+		enemyPos.z=ring_radius;
+	}
+	if(enemyPos.z < -ring_radius ){
+		enemyPos.z=-ring_radius;
+	}
 
 
+	//Sponges and anti-sponges cannot touch
+	int collisionradius=8; //8
+
+	
+	if(linear_distance(vLightPos.x, vLightPos.z, enemyPos.x, enemyPos.z) > collisionradius){
+		/*Collision detected*/	
+		
+	}
+	/*
+	if(vLightPos.x > enemyPos.x + collisionradius ){
+		vLightPos.x=vLightPos.x+enemyPos.x + collisionradius;
+	}
+	if(vLightPos.x < enemyPos.x - collisionradius ){
+		vLightPos.x=vLightPos.x-enemyPos.x - collisionradius;
+	}
+	
+	if(vLightPos.z > enemyPos.z + collisionradius ){
+		vLightPos.z=vLightPos.x+enemyPos.z + collisionradius;
+	}
+	if(vLightPos.z < enemyPos.z - collisionradius ){
+		vLightPos.z=vLightPos.x-enemyPos.z - collisionradius;
+	}
+	*/
 
 	// Render the arena
 	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(160, 0, 0));
@@ -383,8 +450,8 @@ void renderScene(LPVOID lpParam)
 	mModelMatrix = glm::scale(mModelMatrix, glm::vec3(50, 50, 50));
 	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
 	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
-	mdlArena.renderModel();
-
+	mdlArena.renderModel(); 
+	
 
 
 	spColor.useProgram();
