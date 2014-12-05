@@ -99,4 +99,36 @@
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="data\shaders\color.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\color.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\directionalLight.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\fog.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\font2D.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\ortho2D.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\ortho2D.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\pointLight.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\shader.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\shader.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+  </ItemGroup>
 </Project>

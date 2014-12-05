@@ -347,16 +347,38 @@ void renderScene(LPVOID lpParam)
 
 	// Render SpongeBob :D
 
-	mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(60, 0, 0));
+	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(60, 0, 0));
+	mModelMatrix = glm::translate(glm::mat4(1.0), vLightPos);
 	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
-	mModelMatrix = glm::scale(mModelMatrix, glm::vec3(50, 50, 50));
+	//mModelMatrix = glm::scale(mModelMatrix, glm::vec3(50, 50, 50));
+	mModelMatrix = glm::scale(mModelMatrix, glm::vec3(20, 20, 20));
 	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
 	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
 	mdlSpongeBob.renderModel();
 
 
+	//Spongebob cannot leave the ring
+
+	int ring_radius = 30;
+	if(vLightPos.x > ring_radius ){
+		vLightPos.x=ring_radius;
+	}
+	if(vLightPos.x < -ring_radius ){
+		vLightPos.x=-ring_radius;
+	}
+
+	if(vLightPos.z > ring_radius ){
+		vLightPos.z=ring_radius;
+	}
+	if(vLightPos.z < -ring_radius ){
+		vLightPos.z=-ring_radius;
+	}
+
+
+
 	// Render the arena
-	mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(160, 0, 0));
+	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(160, 0, 0));
+	mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(0, 0, 0));
 	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
 	mModelMatrix = glm::scale(mModelMatrix, glm::vec3(50, 50, 50));
 	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));

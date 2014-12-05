@@ -41,6 +41,18 @@
     <ClInclude Include="vertexBufferObject.h" />
     <ClInclude Include="win_OpenGLApp.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="data\shaders\color.frag" />
+    <None Include="data\shaders\color.vert" />
+    <None Include="data\shaders\directionalLight.frag" />
+    <None Include="data\shaders\fog.frag" />
+    <None Include="data\shaders\font2D.frag" />
+    <None Include="data\shaders\ortho2D.frag" />
+    <None Include="data\shaders\ortho2D.vert" />
+    <None Include="data\shaders\pointLight.frag" />
+    <None Include="data\shaders\shader.frag" />
+    <None Include="data\shaders\shader.vert" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{CD93DFD5-CC07-4C38-A7DD-DC89A63990C5}</ProjectGuid>
     <RootNamespace>OpenGl_Lighting</RootNamespace>
