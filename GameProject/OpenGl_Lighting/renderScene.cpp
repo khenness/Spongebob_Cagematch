@@ -193,6 +193,12 @@ Result:  Renders whole scene.
 
 float fGlobalAngle;
 
+//used for calculating player rotation
+float player_last_pos_x =0;
+float player_last_pos_z=0;
+float player_last_angle = 180.0;
+float player_angle =0.0;
+
 #define FOG_EQUATION_LINEAR	0
 #define FOG_EQUATION_EXP		1
 #define FOG_EQUATION_EXP2		2
@@ -207,6 +213,7 @@ namespace FogParameters
 };
 
 glm::vec3 vLightPos = glm::vec3(0.0f, 10.0f, 20.0f);
+//float player_angle = 0;
 
 glm::vec3 thorPos = glm::vec3(0.0f, 20.0f, 20.0f);
 
@@ -236,6 +243,9 @@ int linear_distance(int x1,int y1,int x2,int y2){
 
 	return sqrt(pow((double)(x2-x1), 2)+pow((double)(y2-y1), 2));
 }
+
+
+
 
 void renderScene(LPVOID lpParam)
 {
@@ -280,12 +290,42 @@ void renderScene(LPVOID lpParam)
 	if(Keys::key('M'))fExp += appMain.sof(0.0001f);
 	if(Keys::key('N'))fExp -= appMain.sof(0.0001f);
 
-	if(Keys::key(VK_LEFT))vLightPos.x -= appMain.sof(30.0f);
-	if(Keys::key(VK_RIGHT))vLightPos.x += appMain.sof(30.0f);
-	if(Keys::key(VK_NEXT))vLightPos.y -= appMain.sof(30.0f);
-	if(Keys::key(VK_PRIOR))vLightPos.y += appMain.sof(30.0f);
-	if(Keys::key(VK_UP))vLightPos.z -= appMain.sof(30.0f);
-	if(Keys::key(VK_DOWN))vLightPos.z += appMain.sof(30.0f);
+	//store players old position
+	player_last_pos_x = vLightPos.x;
+	player_last_pos_z = vLightPos.z;
+	
+
+	if(Keys::key(VK_LEFT)){
+		vLightPos.x -= appMain.sof(30.0f);
+	}
+	if(Keys::key(VK_RIGHT)){
+		vLightPos.x += appMain.sof(30.0f);
+	}
+	if(Keys::key(VK_NEXT)){
+		vLightPos.y -= appMain.sof(30.0f);
+	}
+	if(Keys::key(VK_PRIOR)){
+		vLightPos.y += appMain.sof(30.0f);
+	}
+	if(Keys::key(VK_UP)){
+		vLightPos.z -= appMain.sof(30.0f);
+	}
+	if(Keys::key(VK_DOWN)){
+		vLightPos.z += appMain.sof(30.0f);
+	}
+
+	//rotate player character
+	
+	//float deltaX; 
+	//float deltaZ; 
+	if(vLightPos.x != player_last_pos_x || vLightPos.z != player_last_pos_z){
+		float deltaX= vLightPos.x - player_last_pos_x;
+		float deltaZ= vLightPos.z - player_last_pos_z;
+		//if (deltaZ != 0.0 && deltaX != 0){
+		player_angle = (atan2(deltaX, deltaZ) * 180 / 3.14159265358979323846);
+		//}
+	}
+
 
 	spMain.setUniform("ptLight.fConstantAtt", fConst);
 	spMain.setUniform("ptLight.fLinearAtt", fLineaer);
@@ -358,11 +398,13 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
 	mdlThor.renderModel();
 	*/
+
 	// Render SpongeBob :D
 	//float player_angle = 0.0;
 	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(60, 0, 0));
 	mModelMatrix = glm::translate(glm::mat4(1.0), vLightPos);
-	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
+	//mModelMatrix = glm::rotate(mModelMatrix, player_angle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
+	mModelMatrix = glm::rotate(mModelMatrix, player_angle, glm::vec3(0.0f, 1.0f, 0.0f));
 	//mModelMatrix = glm::scale(mModelMatrix, glm::vec3(50, 50, 50));
 	mModelMatrix = glm::scale(mModelMatrix, glm::vec3(20, 20, 20));
 	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -419,29 +461,16 @@ void renderScene(LPVOID lpParam)
 	}
 
 
-	//Sponges and anti-sponges cannot touch
 	int collisionradius=8; //8
+	if(linear_distance(vLightPos.x, vLightPos.z, enemyPos.x, enemyPos.z) > collisionradius){
+		/*Collision detected*/		
+	}
+	
+
 
 	
-	if(linear_distance(vLightPos.x, vLightPos.z, enemyPos.x, enemyPos.z) > collisionradius){
-		/*Collision detected*/	
 		
-	}
-	/*
-	if(vLightPos.x > enemyPos.x + collisionradius ){
-		vLightPos.x=vLightPos.x+enemyPos.x + collisionradius;
-	}
-	if(vLightPos.x < enemyPos.x - collisionradius ){
-		vLightPos.x=vLightPos.x-enemyPos.x - collisionradius;
-	}
 	
-	if(vLightPos.z > enemyPos.z + collisionradius ){
-		vLightPos.z=vLightPos.x+enemyPos.z + collisionradius;
-	}
-	if(vLightPos.z < enemyPos.z - collisionradius ){
-		vLightPos.z=vLightPos.x-enemyPos.z - collisionradius;
-	}
-	*/
 
 	// Render the arena
 	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(160, 0, 0));
