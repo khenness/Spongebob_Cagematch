@@ -193,6 +193,8 @@ Result:  Renders whole scene.
 
 float fGlobalAngle;
 
+int ring_radius = 30;
+
 //used for calculating player rotation
 float player_last_pos_x =0;
 float player_last_pos_z=0;
@@ -373,11 +375,30 @@ void renderScene(LPVOID lpParam)
 
 	int collisionradius=8; 
 
+	//1% chance of changing the enemy destination point
+	int max =100;
+	int min =1;
+	int range = max - min + 1;
+	int num = rand() % range + min;
+	if(num == 1){
+		//pick a random point
+		max = ring_radius;
+		min = -ring_radius;
+		range = max - min + 1;
+		int new_x = rand() % range + min;
+		int new_z = rand() % range + min;
+		enemy_target_pos_x= new_x;
+		enemy_target_pos_z = new_z;
+	}else if(num ==2){
+		//attack the player
+		enemy_target_pos_x =vLightPos.x;
+		enemy_target_pos_z=vLightPos.z;
+	}
 
 	//move enemy character to player
 
-	enemy_target_pos_x =vLightPos.x;
-	enemy_target_pos_z=vLightPos.z;
+	//enemy_target_pos_x =vLightPos.x;
+	//enemy_target_pos_z=vLightPos.z;
 
 	//move enemy character to random point
 
@@ -535,7 +556,7 @@ void renderScene(LPVOID lpParam)
 
 	//Spongebob cannot leave the ring
 	
-	int ring_radius = 30;
+	
 	if(vLightPos.x > ring_radius ){
 		vLightPos.x=ring_radius;
 	}
