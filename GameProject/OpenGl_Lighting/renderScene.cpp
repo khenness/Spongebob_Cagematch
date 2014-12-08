@@ -16,6 +16,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include "objModel.h"
+#include "enemy.h"
 
 
 #define NUMSHADERS 10
@@ -194,6 +195,10 @@ Result:  Renders whole scene.
 float fGlobalAngle;
 
 int ring_radius = 30;
+//enemy * myEnemy = new enemy();
+
+enemy myEnemy(10,-20);
+enemy myEnemy2(20,-10);
 
 //used for calculating player rotation
 float player_last_pos_x =0;
@@ -201,19 +206,8 @@ float player_last_pos_z=0;
 
 float player_current_angle =0.0;
 float player_target_angle =0.0;
+float player_current_y =10.0;
 
-float enemy_current_angle =0.0;
-float enemy_target_angle =0.0;
-float enemy_last_pos_x=0;
-float enemy_last_pos_z=0;
-
-//where the enemy is going
-float enemy_target_pos_x;
-float enemy_target_pos_z;
-
-//enemy stats
-int enemy_health = 100;
-int enemy_stamina = 100;
 
 #define FOG_EQUATION_LINEAR	0
 #define FOG_EQUATION_EXP		1
@@ -233,7 +227,7 @@ glm::vec3 vLightPos = glm::vec3(0.0f, 10.0f, 20.0f);
 
 glm::vec3 thorPos = glm::vec3(0.0f, 20.0f, 20.0f);
 
-glm::vec3 enemyPos = glm::vec3(0.0f, 10.0f, -20.0f);
+//glm::vec3 enemyPos = glm::vec3(0.0f, 10.0f, -20.0f);
 
 
 void renderColoredCube()
@@ -254,11 +248,12 @@ void renderColoredCube()
 	}
 }
 
-
+/*
 int linear_distance(int x1,int y1,int x2,int y2){
 
 	return sqrt(pow((double)(x2-x1), 2)+pow((double)(y2-y1), 2));
 }
+*/
 
 
 
@@ -295,9 +290,9 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("sunLight.fAmbientIntensity", 0.05f);
 	spMain.setUniform("sunLight.fStrength", 0.2f);
 
-	spMain.setUniform("ptLight.vColor", glm::vec3(0.0f, 0.0f, 1.0f));
+	spMain.setUniform("ptLight.vColor", glm::vec3(0.0f, 0.3f,0.0f)); //0,0,1
 	spMain.setUniform("ptLight.vPosition", vLightPos);
-	spMain.setUniform("ptLight.fAmbient", 0.15f);
+	spMain.setUniform("ptLight.fAmbient", 0.15f);  //spMain.setUniform("ptLight.fAmbient", 0.15f);
 	static float fConst = 0.3f, fLineaer = 0.007f, fExp = 0.00008f;
 	if(Keys::key('P'))fConst += appMain.sof(0.2f);
 	if(Keys::key('O'))fConst -= appMain.sof(0.2f);
@@ -310,11 +305,10 @@ void renderScene(LPVOID lpParam)
 	player_last_pos_x = vLightPos.x;
 	player_last_pos_z = vLightPos.z;
 	
-	//store enemy old position
-	enemy_last_pos_x = enemyPos.x;
-	enemy_last_pos_z = enemyPos.z;
 
-
+	//do the enemy behavior
+	myEnemy.doBehaviour(ring_radius, vLightPos.x, vLightPos.z);
+	myEnemy2.doBehaviour(ring_radius, vLightPos.x, vLightPos.z);
 
 
 	if(Keys::key(VK_LEFT)){
@@ -336,6 +330,14 @@ void renderScene(LPVOID lpParam)
 		vLightPos.z += appMain.sof(30.0f);
 	}
 
+	//jump
+	vLightPos.y =10;
+	if(Keys::key(VK_SPACE)){
+		//vLightPos.y = 55;
+		vLightPos.y = 30;
+	}
+	
+
 	//rotate player character
 	
 	float deltaX;
@@ -347,110 +349,7 @@ void renderScene(LPVOID lpParam)
 		player_target_angle = (atan2(deltaX, deltaZ) * 180 / 3.14159265358979323846);
 		//}
 	}
-	//std::cout<<"player_target_angle = "<< player_target_angle <<" and player_current_angle = "<<player_current_angle<<"\n";
 	
-	/*
-	int turn_speed = 5;
-	//turn right
-
-	if ((int)player_target_angle >180){
-		
-	}
-	if (((int)player_current_angle) < ((int)player_target_angle)){
-		player_current_angle= player_current_angle+turn_speed;
-	}
-	
-	if (((int)player_current_angle) >= (int)player_target_angle){
-		player_current_angle = player_target_angle;
-	}
-	*/
-	/*if (((int)player_target_angle-((int)player_current_angle) )<turn_speed  ){
-		player_current_angle = player_target_angle;
-	}*/
-
-
-//	int range = 1 +1 + 1;
-//	int num = rand() % range -1;
-
-
-	int collisionradius=8; 
-
-	//1% chance of changing the enemy destination point
-	int max =100;
-	int min =1;
-	int range = max - min + 1;
-	int num = rand() % range + min;
-	if(num == 1){
-		//pick a random point
-		max = ring_radius;
-		min = -ring_radius;
-		range = max - min + 1;
-		int new_x = rand() % range + min;
-		int new_z = rand() % range + min;
-		enemy_target_pos_x= new_x;
-		enemy_target_pos_z = new_z;
-	}else if(num ==2){
-		//attack the player
-		enemy_target_pos_x =vLightPos.x;
-		enemy_target_pos_z=vLightPos.z;
-	}
-
-	//move enemy character to player
-
-	//enemy_target_pos_x =vLightPos.x;
-	//enemy_target_pos_z=vLightPos.z;
-
-	//move enemy character to random point
-
-
-	float step_size = 30.0f;      //bad to have this here.
-	
-	//if you are within a step size of the point then stop. kind of means we have a grid of size step_size cells. hmm.
-	
-	
-	if (enemyPos.x < enemy_target_pos_x && enemyPos.x+collisionradius < enemy_target_pos_x){
-		enemyPos.x = enemyPos.x+appMain.sof(step_size);
-	}
-	if (enemyPos.x >= enemy_target_pos_x  && enemyPos.x-collisionradius >= enemy_target_pos_x){
-		enemyPos.x = enemyPos.x-appMain.sof(step_size);
-	}
-
-	if (enemyPos.z < enemy_target_pos_z && enemyPos.z+collisionradius < enemy_target_pos_z){
-		enemyPos.z = enemyPos.z+appMain.sof(step_size);
-	}
-	if (enemyPos.z >= enemy_target_pos_z  && enemyPos.z-collisionradius >= enemy_target_pos_x){
-		enemyPos.z = enemyPos.z-appMain.sof(step_size);
-	}
-
-	//rotate enemy character
-	
-	if(enemyPos.x != enemy_last_pos_x || enemyPos.z != enemy_last_pos_z){
-		 deltaX= enemyPos.x - enemy_last_pos_x;
-		 deltaZ= enemyPos.z - enemy_last_pos_z;
-		//if (deltaZ != 0.0 && deltaX != 0){
-		enemy_target_angle = (atan2(deltaX, deltaZ) * 180 / 3.14159265358979323846);
-		//}
-	}
-	
-	//detect collisions
-	collisionradius=15; 
-
-	if(enemyPos.x-collisionradius <= vLightPos.x && enemyPos.x+collisionradius > vLightPos.x && enemyPos.z-collisionradius <= vLightPos.z && enemyPos.z+collisionradius > vLightPos.z){
-		//|| enemyPos.z-collisionradius >= vLightPos.z || enemyPos.z+collisionradius < vLightPos.z
-		enemy_current_angle = enemy_current_angle+15;
-		if (enemy_current_angle >360){
-			enemy_current_angle = 0.0;
-		}
-		//enemyPos.y= 50;
-		//would call attack() here.
-	}else{
-			//if no collison render as normal
-		enemy_current_angle = enemy_target_angle;
-		//enemyPos.y= 10;
-	}
-
-
-
 	
 
 	spMain.setUniform("ptLight.fConstantAtt", fConst);
@@ -468,62 +367,6 @@ void renderScene(LPVOID lpParam)
 	tTextures[3].bindTexture();
 	glDrawArrays(GL_TRIANGLES, 42, 24);
 
-	// Create a box pile inside "building"
-	/*
-	tTextures[1].bindTexture();
-
-	SFOR(nb, 1, 9)
-	{
-		int iCnt = nb > 5 ? 10-nb : nb;
-		FOR(i, iCnt)
-		{
-			glm::vec3 vPos = glm::vec3(-25.0f+nb*8.02f, 4.0f+i*8.02f, 0.0f);
-			mModelMatrix = glm::translate(glm::mat4(1.0), vPos);
-			mModelMatrix = glm::scale(mModelMatrix, glm::vec3(8.0f, 8.0f, 8.0f));
-			// We need to transform normals properly, it's done by transpose of inverse matrix of rotations and scales
-			spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
-			spMain.setUniform("matrices.modelMatrix", mModelMatrix);
-			glDrawArrays(GL_TRIANGLES, 0, 36);
-		}
-	}
-	*/
-	// Render 3 rotated tori to create interesting object
-	/*
-	tTextures[2].bindTexture();
-	
-	// Now it's gonna float in the air
-	glm::vec3 vPos = glm::vec3(0.0f, 50.0, 0.0f);
-	mModelMatrix = glm::translate(glm::mat4(1.0), vPos);
-	mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
-	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
-	glDrawArrays(GL_TRIANGLES, 66, iTorusFaces*3);
-
-	mModelMatrix = glm::translate(glm::mat4(1.0), vPos);
-	mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-	mModelMatrix = glm::rotate(mModelMatrix, 90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
-	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
-	glDrawArrays(GL_TRIANGLES, 66, iTorusFaces*3);
-
-	mModelMatrix = glm::translate(glm::mat4(1.0), vPos);
-	mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+90.0f, glm::vec3(0.0f, 1.0f, 0.0f));
-	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
-	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
-	glDrawArrays(GL_TRIANGLES, 66, iTorusFaces*3);
-	*/
-
-	
-	// Render Thor
-	/*
-	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(-60, 0, 0));
-	mModelMatrix = glm::translate(glm::mat4(1.0), thorPos);
-	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+90.0f, glm::vec3(0.0f, 1.0f, 0.0f));
-	//mModelMatrix = glm::scale(mModelMatrix, glm::vec3(20, 20, 20));
-	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
-	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
-	mdlThor.renderModel();
-	*/
 
 	// Render SpongeBob :D
 	//float player_angle = 0.0;
@@ -537,8 +380,10 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
 	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
 	mdlSpongeBob.renderModel();
-
-
+	
+	myEnemy.draw(mModelMatrix, spMain, mdlSpongeBob);
+	myEnemy2.draw(mModelMatrix, spMain, mdlSpongeBob);
+/*
 	// Render evil SpongeBob :O
 
 	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(60, 0, 0));
@@ -549,7 +394,7 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("matrices.normalMatrix", glm::transpose(glm::inverse(mModelMatrix)));
 	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
 	mdlSpongeBob.renderModel();
-
+	*/
 
 	//enemyPos
 
@@ -570,25 +415,6 @@ void renderScene(LPVOID lpParam)
 	if(vLightPos.z < -ring_radius ){
 		vLightPos.z=-ring_radius;
 	}
-	
-	//evil Spongebob also cannot leave the ring
-	if(enemyPos.x > ring_radius ){
-		enemyPos.x=ring_radius;
-	}
-	if(enemyPos.x < -ring_radius ){
-		enemyPos.x=-ring_radius;
-	}
-
-	if(enemyPos.z > ring_radius ){
-		enemyPos.z=ring_radius;
-	}
-	if(enemyPos.z < -ring_radius ){
-		enemyPos.z=-ring_radius;
-	}
-
-
-
-
 	
 		
 	

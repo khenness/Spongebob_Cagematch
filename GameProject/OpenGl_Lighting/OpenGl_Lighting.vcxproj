@@ -29,6 +29,7 @@
   <ItemGroup>
     <ClInclude Include="common_header.h" />
     <ClInclude Include="dirLight.h" />
+    <ClInclude Include="enemy.h" />
     <ClInclude Include="flyingCamera.h" />
     <ClInclude Include="fog.h" />
     <ClInclude Include="geometry.h" />
