@@ -208,6 +208,8 @@ float player_current_angle =0.0;
 float player_target_angle =0.0;
 float player_current_y =10.0;
 
+bool player_is_attacking = false;
+
 
 #define FOG_EQUATION_LINEAR	0
 #define FOG_EQUATION_EXP		1
@@ -304,11 +306,15 @@ void renderScene(LPVOID lpParam)
 	//store players old position
 	player_last_pos_x = vLightPos.x;
 	player_last_pos_z = vLightPos.z;
-	
+	player_is_attacking = false;
 
+	
+	//rotate player character on turn
+	
+	
 	//do the enemy behavior
-	myEnemy.doBehaviour(ring_radius, vLightPos.x, vLightPos.z);
-	myEnemy2.doBehaviour(ring_radius, vLightPos.x, vLightPos.z);
+	myEnemy.doBehaviour(ring_radius, vLightPos.x, vLightPos.z, player_is_attacking);
+	myEnemy2.doBehaviour(ring_radius, vLightPos.x, vLightPos.z, player_is_attacking);
 
 
 	if(Keys::key(VK_LEFT)){
@@ -330,15 +336,7 @@ void renderScene(LPVOID lpParam)
 		vLightPos.z += appMain.sof(30.0f);
 	}
 
-	//jump
-	vLightPos.y =10;
-	if(Keys::key(VK_SPACE)){
-		//vLightPos.y = 55;
-		vLightPos.y = 30;
-	}
-	
 
-	//rotate player character
 	
 	float deltaX;
 	float deltaZ;
@@ -349,7 +347,29 @@ void renderScene(LPVOID lpParam)
 		player_target_angle = (atan2(deltaX, deltaZ) * 180 / 3.14159265358979323846);
 		//}
 	}
+
+	//attack key
+	if(Keys::key('Z')){
+		//attack
+		player_is_attacking = true;
+		player_current_angle = player_current_angle-15;
+			if (player_current_angle <0){
+				player_current_angle = 360;
+			}
+	}
+
+	if(player_is_attacking == false){
+		player_current_angle=player_target_angle;
+	}
+
+	//jump
+	vLightPos.y =10;
+	if(Keys::key(VK_SPACE)){
+		//vLightPos.y = 55;
+		vLightPos.y = 30;
+	}
 	
+
 	
 
 	spMain.setUniform("ptLight.fConstantAtt", fConst);
@@ -368,12 +388,12 @@ void renderScene(LPVOID lpParam)
 	glDrawArrays(GL_TRIANGLES, 42, 24);
 
 
-	// Render SpongeBob :D
+	// Render SpongeBob :D (player)
 	//float player_angle = 0.0;
 	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(60, 0, 0));
 	mModelMatrix = glm::translate(glm::mat4(1.0), vLightPos);
 	//mModelMatrix = glm::rotate(mModelMatrix, player_angle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
-	mModelMatrix = glm::rotate(mModelMatrix, player_target_angle, glm::vec3(0.0f, 1.0f, 0.0f));
+	mModelMatrix = glm::rotate(mModelMatrix, player_current_angle, glm::vec3(0.0f, 1.0f, 0.0f));
 	//mModelMatrix = glm::scale(mModelMatrix, glm::vec3(50, 50, 50));
 	mModelMatrix = glm::scale(mModelMatrix, glm::vec3(20, 20, 20));
 	//mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
