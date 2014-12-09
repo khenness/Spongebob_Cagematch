@@ -208,6 +208,9 @@ float player_current_angle =0.0;
 float player_target_angle =0.0;
 float player_current_y =10.0;
 
+float player_health = 100.0;
+bool player_alive = true;
+
 bool player_is_attacking = false;
 
 
@@ -293,8 +296,17 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("sunLight.fStrength", 0.2f);
 
 	spMain.setUniform("ptLight.vColor", glm::vec3(0.0f, 0.3f,0.0f)); //0,0,1
+	//spMain.setUniform("ptLight.vColor", glm::vec3(1.0f, 1.0f,1.0f)); //0,0,1
 	spMain.setUniform("ptLight.vPosition", vLightPos);
 	spMain.setUniform("ptLight.fAmbient", 0.15f);  //spMain.setUniform("ptLight.fAmbient", 0.15f);
+
+	//added by Kevin
+	/*spMain.setUniform("ptLight2.vColor", glm::vec3(0.5f, 0.5f,0.5f)); //0,0,1
+	spMain.setUniform("ptLight2.vPosition", 0,50,0);
+	spMain.setUniform("ptLight2.fAmbient", 0.15f);  //spMain.setUniform("ptLight.fAmbient", 0.15f);
+	*/
+
+
 	static float fConst = 0.3f, fLineaer = 0.007f, fExp = 0.00008f;
 	if(Keys::key('P'))fConst += appMain.sof(0.2f);
 	if(Keys::key('O'))fConst -= appMain.sof(0.2f);
@@ -311,11 +323,13 @@ void renderScene(LPVOID lpParam)
 	
 	//rotate player character on turn
 	
+	if(player_health <= 0){
+		player_alive = false;	
+	}
 	
-	//do the enemy behavior
-	myEnemy.doBehaviour(ring_radius, vLightPos.x, vLightPos.z, player_is_attacking);
-	myEnemy2.doBehaviour(ring_radius, vLightPos.x, vLightPos.z, player_is_attacking);
-
+	if(player_alive == false){
+		vLightPos.y = 0;
+	}
 
 	if(Keys::key(VK_LEFT)){
 		vLightPos.x -= appMain.sof(30.0f);
@@ -352,16 +366,17 @@ void renderScene(LPVOID lpParam)
 	if(Keys::key('Z')){
 		//attack
 		player_is_attacking = true;
-		player_current_angle = player_current_angle-15;
+		player_current_angle = player_current_angle-30;
 			if (player_current_angle <0){
 				player_current_angle = 360;
 			}
 	}
-
 	if(player_is_attacking == false){
 		player_current_angle=player_target_angle;
 	}
 
+
+	   
 	//jump
 	vLightPos.y =10;
 	if(Keys::key(VK_SPACE)){
@@ -370,7 +385,17 @@ void renderScene(LPVOID lpParam)
 	}
 	
 
-	
+	//do the enemy behavior
+	myEnemy.doBehaviour(ring_radius, vLightPos.x, vLightPos.y, vLightPos.z, player_is_attacking);
+	myEnemy2.doBehaviour(ring_radius, vLightPos.x, vLightPos.y, vLightPos.z, player_is_attacking);
+
+
+	//foreach enemy in scene...
+	if(myEnemy.doing_damage == true ){
+		player_health = player_health-10;
+		cout <<"player_health =" << player_health<<"\n";
+	}
+	cout <<"myEnemy.doing_damage =" <<myEnemy.doing_damage<<"\n";
 
 	spMain.setUniform("ptLight.fConstantAtt", fConst);
 	spMain.setUniform("ptLight.fLinearAtt", fLineaer);
