@@ -1,20 +1,20 @@
-﻿Build started 16-Dec-14 4:04:37 PM.
+﻿Build started 16-Dec-14 4:13:06 PM.
      1>Project "C:\Users\Kevin\Documents\Visual Studio 2012\Projects\GameProject\OpenGl_Lighting\OpenGl_Lighting.vcxproj" on node 2 (Build target(s)).
      1>ClCompile:
          C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\CL.exe /c /I"C:\Users\Kevin\Documents\Visual Studio 2012\libs\include" /I"C:\Users\Kevin\Documents\Visual Studio 2012\libs\include\FREETYPE\freetype" /ZI /nologo /W3 /WX- /Od /Oy- /D _MBCS /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Fo"Debug\\" /Fd"Debug\vc110.pdb" /Gd /TP /analyze- /errorReport:prompt renderScene.cpp
          renderScene.cpp
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(325): warning C4018: '<' : signed/unsigned mismatch
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(342): warning C4244: 'argument' : conversion from 'int' to 'float', possible loss of data
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(415): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(445): warning C4018: '<' : signed/unsigned mismatch
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(452): warning C4018: '<' : signed/unsigned mismatch
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(456): warning C4018: '<' : signed/unsigned mismatch
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(512): warning C4018: '<' : signed/unsigned mismatch
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(516): warning C4018: '<' : signed/unsigned mismatch
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(540): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(543): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(547): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
-     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(550): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(327): warning C4018: '<' : signed/unsigned mismatch
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(344): warning C4244: 'argument' : conversion from 'int' to 'float', possible loss of data
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(417): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(447): warning C4018: '<' : signed/unsigned mismatch
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(454): warning C4018: '<' : signed/unsigned mismatch
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(458): warning C4018: '<' : signed/unsigned mismatch
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(514): warning C4018: '<' : signed/unsigned mismatch
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(518): warning C4018: '<' : signed/unsigned mismatch
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(542): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(545): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(549): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
+     1>c:\users\kevin\documents\visual studio 2012\projects\gameproject\opengl_lighting\renderscene.cpp(552): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
          GLM: rotate function taking degrees as a parameter is deprecated. #define GLM_FORCE_RADIANS before including GLM headers to remove this message.
        Link:
          C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\Kevin\Documents\Visual Studio 2012\Projects\GameProject\Debug\OpenGl_Lighting.exe" /INCREMENTAL /NOLOGO /LIBPATH:"C:\Users\Kevin\Documents\Visual Studio 2012\libs" glew32.lib glfw3.lib opengl32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Users\Kevin\Documents\Visual Studio 2012\Projects\GameProject\Debug\OpenGl_Lighting.pdb" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Kevin\Documents\Visual Studio 2012\Projects\GameProject\Debug\OpenGl_Lighting.lib" /MACHINE:X86 Debug\dirLight.obj
@@ -37,4 +37,4 @@
 
 Build succeeded.
 
-Time Elapsed 00:00:07.78
+Time Elapsed 00:00:07.74

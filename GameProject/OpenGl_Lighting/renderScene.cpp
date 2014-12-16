@@ -174,7 +174,9 @@ void initScene(LPVOID lpParam)
 	//ftFont.loadSystemFont("arial.ttf", 32);
 	//ftFont.setShaderProgram(&spFont2D);
 	
-	cCamera = CFlyingCamera(glm::vec3(0.0f, 10.0f, 120.0f), glm::vec3(0.0f, 10.0f, 119.0f), glm::vec3(0.0f, 1.0f, 0.0f), 25.0f, 0.1f);
+	//cCamera = CFlyingCamera(glm::vec3(0.0f, 10.0f, 120.0f), glm::vec3(0.0f, 10.0f, 119.0f), glm::vec3(0.0f, 1.0f, 0.0f), 25.0f, 0.1f);
+	cCamera = CFlyingCamera(glm::vec3(0.0f, 80.0f, 120.0f), glm::vec3(0.0f, 10.0f, 119.0f), glm::vec3(0.0f, 1.0f, 0.0f), 25.0f, 0.1f);
+	
 	cCamera.setMovingKeys('W', 'S', 'A', 'D');
 
 	sbMainSkybox.loadSkybox("data\\skyboxes\\jajlands1\\", "jajlands1_ft.jpg", "jajlands1_bk.jpg", "jajlands1_lf.jpg", "jajlands1_rt.jpg", "jajlands1_up.jpg", "jajlands1_dn.jpg");
@@ -222,8 +224,8 @@ float player_last_pos_z=0;
 float player_current_angle =0.0;
 float player_target_angle =0.0;
 float player_current_y =10.0;
-
-float player_health = 1000.0;
+float PLAYER_HEALTH = 1000.0;
+float player_health =PLAYER_HEALTH;
 bool player_alive = true;
 bool roundover = true;
 
@@ -350,7 +352,7 @@ void renderScene(LPVOID lpParam)
 	if(Keys::key('R')){
 		NUM_ENEMIES=1;
 		playerPos = glm::vec3(0.0f, 10.0f, 20.0f);
-		player_health = 100.0;
+		player_health = PLAYER_HEALTH;
 		player_alive = true;
 		int p =0;
 		while(dead_enemies.empty() == false){
