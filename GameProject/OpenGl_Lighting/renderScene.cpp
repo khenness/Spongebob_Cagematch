@@ -223,7 +223,7 @@ float player_current_angle =0.0;
 float player_target_angle =0.0;
 float player_current_y =10.0;
 
-float player_health = 100.0;
+float player_health = 1000.0;
 bool player_alive = true;
 bool roundover = true;
 
@@ -351,6 +351,7 @@ void renderScene(LPVOID lpParam)
 		NUM_ENEMIES=1;
 		playerPos = glm::vec3(0.0f, 10.0f, 20.0f);
 		player_health = 100.0;
+		player_alive = true;
 		int p =0;
 		while(dead_enemies.empty() == false){
 			
@@ -382,14 +383,7 @@ void renderScene(LPVOID lpParam)
 
 	
 	//rotate player character on turn
-	//player_health = -50;
-	if(player_health <= 0.0){
-		player_alive = false;	
-	}
 	
-	if(player_alive == false){
-		playerPos.y = 150;
-	}
 
 	if(Keys::key(VK_LEFT)){
 		playerPos.x -= appMain.sof(30.0f);
@@ -451,7 +445,7 @@ void renderScene(LPVOID lpParam)
 	for(int i =0; i< active_enemies.size(); i++){
 		active_enemies[i].doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
 		if(active_enemies[i].doing_damage == true ){
-			player_health = player_health-10;
+			player_health = player_health-1;
 		}
 	}
 	
@@ -470,6 +464,16 @@ void renderScene(LPVOID lpParam)
 		cout <<"player_health =" << player_health<<"\n";
 	}
 	*/
+
+	if(player_health <= 0.0){
+		player_alive = false;	
+	}
+	
+	if(player_alive == false){
+		playerPos.y = 0;
+		playerPos.z = -10;
+		playerPos.x = -60;
+	}
 
 	spMain.setUniform("ptLight.fConstantAtt", fConst);
 	spMain.setUniform("ptLight.fLinearAtt", fLineaer);
