@@ -202,13 +202,18 @@ float fGlobalAngle;
 int ring_radius = 30;
 //enemy * myEnemy = new enemy();
 
-enemy myEnemy(10,-20);
+//enemy myEnemy(10,-20);
 //enemy myEnemy2(20,-10);
-enemy myEnemy2(10,-20);
+//enemy myEnemy2(10,-20);
 
 
 std::vector<enemy> dead_enemies;
 std::vector<enemy> active_enemies;
+//active_enemies.push_back(myEnemy);
+//active_enemies.push_back(myEnemy2);
+
+
+int NUM_ENEMIES =1;
 
 //used for calculating player rotation
 float player_last_pos_x =0;
@@ -220,6 +225,7 @@ float player_current_y =10.0;
 
 float player_health = 100.0;
 bool player_alive = true;
+bool roundover = true;
 
 bool player_is_attacking = false;
 
@@ -315,15 +321,49 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("ptLight.vPosition", vLightPos);
 	spMain.setUniform("ptLight.fAmbient", 0.15f);  //spMain.setUniform("ptLight.fAmbient", 0.15f);
 
-
-	
+	roundover=true;
+	for(int x =0; x<active_enemies.size(); x++){
+		if(active_enemies[x].alive == true){
+			roundover = false;
+		}
+	}
+	if(roundover == true){
+		while(active_enemies.empty() == false){
+			dead_enemies.push_back(active_enemies.back());
+			active_enemies.pop_back();
+		}
+		
+		for(int x =0; x < NUM_ENEMIES; x++){
+			int max =29;
+			int min =-29;
+			int range = max - min + 1;
+			int en_x = rand() % range + min;
+			int en_z = rand() % range + min;
+			enemy * newEnemy = new enemy(0+en_x, 0+en_z);
+			active_enemies.push_back(*newEnemy);
+		}
+		NUM_ENEMIES=NUM_ENEMIES+1;
+		roundover = false;
+	}
 
 	//restart the game
 	if(Keys::key('R')){
+		NUM_ENEMIES=1;
 		playerPos = glm::vec3(0.0f, 10.0f, 20.0f);
-		player_health = 100;
-		myEnemy.restart();
-		myEnemy2.restart();
+		player_health = 100.0;
+		int p =0;
+		while(dead_enemies.empty() == false){
+			
+			dead_enemies.pop_back();
+			p++;
+		}
+		p=0;
+		while(active_enemies.empty() == false){
+			active_enemies.pop_back();
+		}
+		//myEnemy.restart();
+		//myEnemy2.restart();
+
 	}
 	
 
@@ -342,13 +382,13 @@ void renderScene(LPVOID lpParam)
 
 	
 	//rotate player character on turn
-	
-	if(player_health <= 0){
+	//player_health = -50;
+	if(player_health <= 0.0){
 		player_alive = false;	
 	}
 	
 	if(player_alive == false){
-		playerPos.y = 0;
+		playerPos.y = 150;
 	}
 
 	if(Keys::key(VK_LEFT)){
@@ -406,16 +446,30 @@ void renderScene(LPVOID lpParam)
 	
 
 	//do the enemy behavior
-	myEnemy.doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
-	myEnemy2.doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
-
+	//myEnemy.doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
+	//myEnemy2.doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
+	for(int i =0; i< active_enemies.size(); i++){
+		active_enemies[i].doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
+		if(active_enemies[i].doing_damage == true ){
+			player_health = player_health-10;
+		}
+	}
+	
+	for(int i =0; i< dead_enemies.size(); i++){
+		dead_enemies[i].doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
+	}
+	
+	for(int i =0; i< active_enemies.size(); i++){
+		active_enemies[i].doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
+	}
 
 	//foreach enemy in scene...
+	/*
 	if(myEnemy.doing_damage == true ){
 		player_health = player_health-10;
 		cout <<"player_health =" << player_health<<"\n";
 	}
-	cout <<"myEnemy.doing_damage =" <<myEnemy.doing_damage<<"\n";
+	*/
 
 	spMain.setUniform("ptLight.fConstantAtt", fConst);
 	spMain.setUniform("ptLight.fLinearAtt", fLineaer);
@@ -446,9 +500,20 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
 	mdlSpongeBob.renderModel();
 	
+	
+	/*
 	myEnemy.draw(mModelMatrix, spMain, mdlEvilSpongeBob);
 	myEnemy2.draw(mModelMatrix, spMain, mdlEvilSpongeBob);
-/*
+	*/
+	for(int i =0; i< active_enemies.size(); i++){
+		active_enemies[i].draw(mModelMatrix, spMain, mdlEvilSpongeBob);
+	}
+	
+	for(int i =0; i< dead_enemies.size(); i++){
+		dead_enemies[i].draw(mModelMatrix, spMain, mdlEvilSpongeBob);
+	}
+
+	/*
 	// Render evil SpongeBob :O
 
 	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(60, 0, 0));
