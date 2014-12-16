@@ -15,6 +15,7 @@
     <ClCompile Include="enemy.cpp" />
     <ClCompile Include="flyingCamera.cpp" />
     <ClCompile Include="fog.cpp" />
+    <ClCompile Include="game.cpp" />
     <ClCompile Include="objModel.cpp" />
     <ClCompile Include="openGLControl.cpp" />
     <ClCompile Include="pointLight.cpp" />
@@ -32,6 +33,7 @@
     <ClInclude Include="enemy.h" />
     <ClInclude Include="flyingCamera.h" />
     <ClInclude Include="fog.h" />
+    <ClInclude Include="game.h" />
     <ClInclude Include="geometry.h" />
     <ClInclude Include="objModel.h" />
     <ClInclude Include="openGLControl.h" />
@@ -51,6 +53,7 @@
     <None Include="data\shaders\font2D.frag" />
     <None Include="data\shaders\ortho2D.frag" />
     <None Include="data\shaders\ortho2D.vert" />
+    <None Include="data\shaders\overheadLight.frag" />
     <None Include="data\shaders\pointLight.frag" />
     <None Include="data\shaders\shader.frag" />
     <None Include="data\shaders\shader.vert" />

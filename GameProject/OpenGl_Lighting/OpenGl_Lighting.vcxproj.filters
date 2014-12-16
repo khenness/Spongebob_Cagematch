@@ -57,6 +57,9 @@
     <ClCompile Include="enemy.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="game.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common_header.h">
@@ -104,6 +107,9 @@
     <ClInclude Include="enemy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="game.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="data\shaders\color.frag">
@@ -134,6 +140,9 @@
       <Filter>Resource Files</Filter>
     </None>
     <None Include="data\shaders\shader.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="data\shaders\overheadLight.frag">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>

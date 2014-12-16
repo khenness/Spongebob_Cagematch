@@ -45,6 +45,7 @@ CSkybox sbMainSkybox;
 
 CObjModel mdlThor;
 CObjModel mdlSpongeBob;
+CObjModel mdlEvilSpongeBob;
 CObjModel mdlArena;
 
 
@@ -129,12 +130,14 @@ void initScene(LPVOID lpParam)
 
 	shShaders[8].loadShader("data\\shaders\\color.vert", GL_VERTEX_SHADER);
 	shShaders[9].loadShader("data\\shaders\\color.frag", GL_FRAGMENT_SHADER);
+	//shShaders[10].loadShader("data\\shaders\\overheadLight.frag", GL_FRAGMENT_SHADER);
 
 	spMain.createProgram();
 	spMain.addShaderToProgram(&shShaders[0]);
 	spMain.addShaderToProgram(&shShaders[1]); 
 	spMain.addShaderToProgram(&shShaders[5]);
 	spMain.addShaderToProgram(&shShaders[6]);
+	//spMain.addShaderToProgram(&shShaders[10]); //added by Kevin
 	spMain.linkProgram();
 
 	spOrtho2D.createProgram();
@@ -154,7 +157,8 @@ void initScene(LPVOID lpParam)
 
 	// Load textures
 
-	string sTextureNames[] = {"grass.jpg", "crate.jpg", "metalplate.jpg", "stone_wall.jpg"};
+//	string sTextureNames[] = {"playerPos.jpg", "crate.jpg", "metalplate.jpg", "stone_wall.jpg"};
+	string sTextureNames[] = {"metalplate.jpg", "crate.jpg", "metalplate.jpg", "stone_wall.jpg"};
 	
 	FOR(i, NUMTEXTURES)
 	{
@@ -178,6 +182,7 @@ void initScene(LPVOID lpParam)
 	
 	mdlThor.loadModel("data\\models\\Thor\\thor.obj", "thor.mtl");
 	mdlSpongeBob.loadModel("data\\models\\Spongebob\\spongebob_bind.obj", "spongebob_bind.mtl");
+	mdlEvilSpongeBob.loadModel("data\\models\\EvilSpongebob\\spongebob_bind.obj", "spongebob_bind.mtl");
 	mdlArena.loadModel("data\\models\\Arena\\Arena.obj", "Arena.mtl");
 
 }
@@ -198,7 +203,12 @@ int ring_radius = 30;
 //enemy * myEnemy = new enemy();
 
 enemy myEnemy(10,-20);
-enemy myEnemy2(20,-10);
+//enemy myEnemy2(20,-10);
+enemy myEnemy2(10,-20);
+
+
+std::vector<enemy> dead_enemies;
+std::vector<enemy> active_enemies;
 
 //used for calculating player rotation
 float player_last_pos_x =0;
@@ -227,7 +237,12 @@ namespace FogParameters
 	int iFogEquation = FOG_EQUATION_EXP; // 0 = linear, 1 = exp, 2 = exp2
 };
 
-glm::vec3 vLightPos = glm::vec3(0.0f, 10.0f, 20.0f);
+
+glm::vec3 vLightPos = glm::vec3(0.0f, 50.0f, 0.0f);
+glm::vec3 playerPos = glm::vec3(0.0f, 10.0f, 20.0f);
+
+
+glm::vec3 ohLightPos = glm::vec3(0.0f,50.0f,0.0f);
 //float player_angle = 0;
 
 glm::vec3 thorPos = glm::vec3(0.0f, 20.0f, 20.0f);
@@ -295,17 +310,22 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("sunLight.fAmbientIntensity", 0.05f);
 	spMain.setUniform("sunLight.fStrength", 0.2f);
 
-	spMain.setUniform("ptLight.vColor", glm::vec3(0.0f, 0.3f,0.0f)); //0,0,1
-	//spMain.setUniform("ptLight.vColor", glm::vec3(1.0f, 1.0f,1.0f)); //0,0,1
+	//spMain.setUniform("ptLight.vColor", glm::vec3(0.0f, 0.3f,0.0f)); //0,0,1
+	spMain.setUniform("ptLight.vColor", glm::vec3(1.0f, 1.0f,1.0f)); //0,0,1
 	spMain.setUniform("ptLight.vPosition", vLightPos);
 	spMain.setUniform("ptLight.fAmbient", 0.15f);  //spMain.setUniform("ptLight.fAmbient", 0.15f);
 
-	//added by Kevin
-	/*spMain.setUniform("ptLight2.vColor", glm::vec3(0.5f, 0.5f,0.5f)); //0,0,1
-	spMain.setUniform("ptLight2.vPosition", 0,50,0);
-	spMain.setUniform("ptLight2.fAmbient", 0.15f);  //spMain.setUniform("ptLight.fAmbient", 0.15f);
-	*/
 
+	
+
+	//restart the game
+	if(Keys::key('R')){
+		playerPos = glm::vec3(0.0f, 10.0f, 20.0f);
+		player_health = 100;
+		myEnemy.restart();
+		myEnemy2.restart();
+	}
+	
 
 	static float fConst = 0.3f, fLineaer = 0.007f, fExp = 0.00008f;
 	if(Keys::key('P'))fConst += appMain.sof(0.2f);
@@ -316,8 +336,8 @@ void renderScene(LPVOID lpParam)
 	if(Keys::key('N'))fExp -= appMain.sof(0.0001f);
 
 	//store players old position
-	player_last_pos_x = vLightPos.x;
-	player_last_pos_z = vLightPos.z;
+	player_last_pos_x = playerPos.x;
+	player_last_pos_z = playerPos.z;
 	player_is_attacking = false;
 
 	
@@ -328,35 +348,35 @@ void renderScene(LPVOID lpParam)
 	}
 	
 	if(player_alive == false){
-		vLightPos.y = 0;
+		playerPos.y = 0;
 	}
 
 	if(Keys::key(VK_LEFT)){
-		vLightPos.x -= appMain.sof(30.0f);
+		playerPos.x -= appMain.sof(30.0f);
 	}
 	if(Keys::key(VK_RIGHT)){
-		vLightPos.x += appMain.sof(30.0f);
+		playerPos.x += appMain.sof(30.0f);
 	}
 	if(Keys::key(VK_NEXT)){
-		vLightPos.y -= appMain.sof(30.0f);
+		playerPos.y -= appMain.sof(30.0f);
 	}
 	if(Keys::key(VK_PRIOR)){
-		vLightPos.y += appMain.sof(30.0f);
+		playerPos.y += appMain.sof(30.0f);
 	}
 	if(Keys::key(VK_UP)){
-		vLightPos.z -= appMain.sof(30.0f);
+		playerPos.z -= appMain.sof(30.0f);
 	}
 	if(Keys::key(VK_DOWN)){
-		vLightPos.z += appMain.sof(30.0f);
+		playerPos.z += appMain.sof(30.0f);
 	}
 
 
 	
 	float deltaX;
 	float deltaZ;
-	if(vLightPos.x != player_last_pos_x || vLightPos.z != player_last_pos_z){
-		deltaX= vLightPos.x - player_last_pos_x;
-		deltaZ= vLightPos.z - player_last_pos_z;
+	if(playerPos.x != player_last_pos_x || playerPos.z != player_last_pos_z){
+		deltaX= playerPos.x - player_last_pos_x;
+		deltaZ= playerPos.z - player_last_pos_z;
 		//if (deltaZ != 0.0 && deltaX != 0){
 		player_target_angle = (atan2(deltaX, deltaZ) * 180 / 3.14159265358979323846);
 		//}
@@ -378,16 +398,16 @@ void renderScene(LPVOID lpParam)
 
 	   
 	//jump
-	vLightPos.y =10;
+	playerPos.y =10;
 	if(Keys::key(VK_SPACE)){
-		//vLightPos.y = 55;
-		vLightPos.y = 30;
+		//playerPos.y = 55;
+		playerPos.y = 30;
 	}
 	
 
 	//do the enemy behavior
-	myEnemy.doBehaviour(ring_radius, vLightPos.x, vLightPos.y, vLightPos.z, player_is_attacking);
-	myEnemy2.doBehaviour(ring_radius, vLightPos.x, vLightPos.y, vLightPos.z, player_is_attacking);
+	myEnemy.doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
+	myEnemy2.doBehaviour(ring_radius, playerPos.x, playerPos.y, playerPos.z, player_is_attacking);
 
 
 	//foreach enemy in scene...
@@ -416,7 +436,7 @@ void renderScene(LPVOID lpParam)
 	// Render SpongeBob :D (player)
 	//float player_angle = 0.0;
 	//mModelMatrix = glm::translate(glm::mat4(1.0), glm::vec3(60, 0, 0));
-	mModelMatrix = glm::translate(glm::mat4(1.0), vLightPos);
+	mModelMatrix = glm::translate(glm::mat4(1.0), playerPos);
 	//mModelMatrix = glm::rotate(mModelMatrix, player_angle+180.0f, glm::vec3(0.0f, 1.0f, 0.0f));
 	mModelMatrix = glm::rotate(mModelMatrix, player_current_angle, glm::vec3(0.0f, 1.0f, 0.0f));
 	//mModelMatrix = glm::scale(mModelMatrix, glm::vec3(50, 50, 50));
@@ -426,8 +446,8 @@ void renderScene(LPVOID lpParam)
 	spMain.setUniform("matrices.modelMatrix", &mModelMatrix);
 	mdlSpongeBob.renderModel();
 	
-	myEnemy.draw(mModelMatrix, spMain, mdlSpongeBob);
-	myEnemy2.draw(mModelMatrix, spMain, mdlSpongeBob);
+	myEnemy.draw(mModelMatrix, spMain, mdlEvilSpongeBob);
+	myEnemy2.draw(mModelMatrix, spMain, mdlEvilSpongeBob);
 /*
 	// Render evil SpongeBob :O
 
@@ -447,18 +467,18 @@ void renderScene(LPVOID lpParam)
 	//Spongebob cannot leave the ring
 	
 	
-	if(vLightPos.x > ring_radius ){
-		vLightPos.x=ring_radius;
+	if(playerPos.x > ring_radius ){
+		playerPos.x=ring_radius;
 	}
-	if(vLightPos.x < -ring_radius ){
-		vLightPos.x=-ring_radius;
+	if(playerPos.x < -ring_radius ){
+		playerPos.x=-ring_radius;
 	}
 
-	if(vLightPos.z > ring_radius ){
-		vLightPos.z=ring_radius;
+	if(playerPos.z > ring_radius ){
+		playerPos.z=ring_radius;
 	}
-	if(vLightPos.z < -ring_radius ){
-		vLightPos.z=-ring_radius;
+	if(playerPos.z < -ring_radius ){
+		playerPos.z=-ring_radius;
 	}
 	
 		
@@ -479,7 +499,7 @@ void renderScene(LPVOID lpParam)
 	spColor.setUniform("matrices.projectionMatrix", oglControl->getProjectionMatrix());
 	spColor.setUniform("matrices.viewMatrix", mView);
 
-	mModelMatrix = glm::translate(glm::mat4(1.0), vLightPos);
+	mModelMatrix = glm::translate(glm::mat4(1.0), playerPos);
 	mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle, glm::vec3(1.0f, 0.0f, 0.0f));
 	mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle, glm::vec3(0.0f, 1.0f, 0.0f));
 	mModelMatrix = glm::rotate(mModelMatrix, fGlobalAngle, glm::vec3(0.0f, 0.0f, 1.0f));
@@ -535,5 +555,6 @@ void releaseScene(LPVOID lpParam)
 	vboSceneObjects.releaseVBO();
 	mdlThor.releaseModel();
 	mdlSpongeBob.releaseModel();
+	mdlEvilSpongeBob.releaseModel();
 	mdlArena.releaseModel();
 }
